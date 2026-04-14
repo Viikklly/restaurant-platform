@@ -1,0 +1,23 @@
+# Порт, на котором будет работать сервер
+server:
+  port: 8761
+
+# Настройки Eureka сервера
+eureka:
+  instance:
+    hostname: localhost  # Имя хоста для регистрации
+  client:
+    register-with-eureka: false  # Не регистрировать себя в Eureka
+    fetch-registry: false        # Не скачивать реестр с других серверов
+  server:
+    enable-self-preservation: false  # Отключаем режим самосохранения (для разработки)
+
+# Имя приложения в Spring Boot
+spring:
+  cloud:
+    config:
+      enabled: false
+      # Discovery Service должен запускаться с локальными настройками
+      # НЕ надо подключаться к Config Server
+  application:
+    name: discovery-service  # Будет отображаться в логах и метриках

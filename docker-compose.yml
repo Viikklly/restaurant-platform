@@ -1,0 +1,345 @@
+version: '3.8'
+
+services:
+  # Базы данных
+
+  # AUTH SERVICE
+  postgres-auth:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: authdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-auth-data:/var/lib/postgresql/data
+    networks:
+      - restaurant-network
+
+  # ORDER SERVICE
+  postgres-order:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: orderdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-order-data:/var/lib/postgresql/data
+    networks:
+      - restaurant-network
+
+  # KITCHEN SERVICE
+  postgres-kitchen:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: kitchendb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres-kitchen-data:/var/lib/postgresql/data
+    networks:
+      - restaurant-network
+
+  # PAYMENT SERVICE
+  postgres-payment:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: paymentdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres-payment-data:/var/lib/postgresql/data
+    networks:
+      - restaurant-network
+
+  # ------------ // ------------
+  # REDIS (КЭШ)
+  # Используется как: кэш, брокер сообщений, база данных для временных данных
+  redis:
+    image: redis:7 # версия 7
+    ports:
+      - "6379:6379" # Redis доступен на localhost:6379 для приложений на хосте
+    networks:
+      - restaurant-network
+       # restaurant-network — это изолированный виртуальный коммутатор.
+      # restaurant-network — это НЕ название сервиса, а название СЕТИ
+      # или обобщенное название, которое включает все наши сервисы
+      #
+      # restaurant-network — это как локальная сеть внутри ресторана:
+      # Кухня (kitchen-service) может общаться со складом (postgres-kitchen)
+      # Официант (gateway-service) принимает заказы от клиентов
+      # Кассир (payment-service) общается с банком (через Kafka)
+      # Все это внутри одной сети ресторана, но изолировано от соседних магазинов
+
+
+
+  # KAFKA (БРОКЕР СООБЩЕНИЙ)
+  kafka:
+    image: confluentinc/cp-kafka:latest  # latest — последняя версия с поддержкой KRaft
+    ports:
+      - "9092:9092"  # Для подключения с хоста
+      - "29092:29092"  # Для подключения внутри Docker сети
+
+    environment:
+      # ОСНОВНЫЕ НАСТРОЙКИ KRaft
+      # Роли брокера: broker (обрабатывает сообщения) + controller (управляет кластером)
+      KAFKA_PROCESS_ROLES: broker,controller
+
+      # Уникальный ID этого узла в кластере (один брокер, поэтому ID=1)
+      KAFKA_NODE_ID: 1
+
+      # Кворум контроллеров: список всех узлов-контроллеров в формате ID@хост:порт
+      # 1@kafka:9093 - узел с ID=1 доступен внутри Docker сети по имени kafka на порту 9093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+
+      # === НАСТРОЙКИ СЕТИ И СЛУШАТЕЛЕЙ ===
+      # Слушатели: на каких адресах и портах Kafka принимает соединения
+      # PLAINTEXT://0.0.0.0:9092 - для внешних подключений (с хоста)
+      # CONTROLLER://0.0.0.0:9093 - для внутренних RPC вызовов между контроллерами
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+
+      # Рекламируемые слушатели: какие адреса сообщать клиентам
+      # localhost:9092 - для подключения с вашей хост-машины (вне Docker)
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+
+      # Соответствие между именами слушателей и протоколами безопасности
+      # PLAINTEXT - незашифрованное соединение (для разработки)
+      # CONTROLLER - внутренний протокол контроллеров (тоже PLAINTEXT для простоты)
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+
+      # Какой слушатель использовать для межконтроллерного общения
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # ХРАНЕНИЕ ДАННЫХ
+      # Где хранить логи (сообщения) и метаданные
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+
+      # === НАСТРОЙКИ ДЛЯ РАЗРАБОТКИ (ОДИНОЧНЫЙ БРОКЕР) ===
+      # Фактор репликации для внутренних топиков (1 - значит без репликации)
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+      #  ДОПОЛНИТЕЛЬНО: ОТКЛЮЧАЕМ ПРОВЕРКУ ПОЛИТИК (ДЛЯ РАЗРАБОТКИ)
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true  # Автоматически создавать топики при отправке сообщений
+
+    networks:
+      - restaurant-network
+
+  # ------------ // ------------
+  # МИКРОСЕРВИСЫ
+
+  # ------------ // ------------
+  # DISCOVERY SERVICE (EUREKA SERVER)
+  # Discovery Service — это сервис обнаружения
+  discovery-service:
+    build: ./services/discovery-service # От куда собирается Docker образ
+    ports:
+      - "8761:8761"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker # Spring Boot будет использовать application-docker.yml
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      SPRING_CLOUD_CONFIG_FAIL_FAST: false
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    networks:
+      - restaurant-network
+
+  # ------------ // ------------
+  # CONFIG SERVICE (SPRING CLOUD CONFIG)
+  # Config Service — это централизованный сервер конфигураций, который хранит все настройки
+  #  всех микросервисов в одном месте
+  config-service:
+    build: ./services/config-service
+    # Docker строит образ из исходников в папке ./services/config-service
+    # Spring Boot приложение с @EnableConfigServer
+    # @EnableConfigServer  //  Эта аннотация делает приложение Config Server!
+    ports:
+      - "8888:8888"
+    depends_on:
+      - discovery-service
+      # Config Service запускается ПОСЛЕ Discovery Service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker,native
+      SPRING_CLOUD_CONFIG_SERVER_NATIVE_SEARCH_LOCATIONS: file:///config-repo
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    volumes:
+      - ./infrastructure/config-repo:/config-repo
+    networks:
+      - restaurant-network
+
+  # ------------ // ------------
+  # API GATEWAY
+  # API Gateway — это единая точка входа для всех клиентов
+  gateway-service:
+    build: ./services/gateway-service
+    # Docker строит образ из исходников в папке ./services/gateway-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      - discovery-service
+      - config-service
+      # Запускается после этих сервисов
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-service:8888 # откуда брать конфигурацию
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      SPRING_CLOUD_CONFIG_FAIL_FAST: false
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    networks:
+      - restaurant-network
+
+
+
+  # СЕРВИСЫ
+
+  # ------------ // ------------
+  # AUTH SERVICE
+  auth-service:
+    build: ./services/auth-service
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_CLOUD_CONFIG_ENABLED: false
+      SPRING_MAIN_WEB_APPLICATION_TYPE: servlet
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+      EUREKA_CLIENT_ENABLED: true
+    networks:
+      - restaurant-network
+    depends_on:
+      - discovery-service
+      - config-service
+      - postgres-auth
+      - kafka
+      - redis
+
+  # ------------ // ------------
+  # ORDER SERVICE
+  order-service:
+    build: ./services/order-service
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_CLOUD_CONFIG_ENABLED: false
+      SPRING_MAIN_WEB_APPLICATION_TYPE: servlet
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+      EUREKA_CLIENT_ENABLED: true
+    networks:
+      - restaurant-network
+    depends_on:
+      - discovery-service
+      - config-service
+      - postgres-order
+      - kafka
+      - redis
+
+  # ------------ // ------------
+  # KITCHEN SERVICE
+  kitchen-service:
+    build: ./services/kitchen-service
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      SPRING_CLOUD_CONFIG_FAIL_FAST: false
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    networks:
+      - restaurant-network
+    depends_on:
+      - discovery-service
+      - config-service
+      - postgres-kitchen
+      - kafka
+      - redis
+
+  # ------------ // ------------
+  # PAYMENT SERVICE
+  payment-service:
+    build: ./services/payment-service
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      SPRING_CLOUD_CONFIG_FAIL_FAST: false
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    networks:
+      - restaurant-network
+    depends_on:
+      - discovery-service
+      - config-service
+      - postgres-payment
+      - kafka
+      - redis
+
+
+# СЕТИ
+networks:
+  restaurant-network:
+    driver: bridge
+    # Bridge — стандартный драйвер сети Docker
+    #Создает изолированную виртуальную сеть на одном хосте
+    #Контейнеры в bridge сети могут общаться друг с другом
+    #Контейнеры изолированы от других сетей
+
+# ------------ // ------------
+# ТОМА (ПЕРСИСТЕНТНОСТЬ ДАННЫХ)
+volumes:
+  # Docker Volumes — это механизм постоянного хранения данных, который позволяет
+  # сохранять информацию даже после удаления и пересоздания контейнеров
+
+  # Ключевые моменты:
+  # Тома сохраняют данные при перезапуске контейнеров
+  # Каждая БД имеет свой изолированный том
+  #Тома не удаляются при docker-compose down (без -v)
+  #Данные хранятся в /var/lib/docker/volumes/ на хосте
+  postgres-auth-data:
+  postgres-order-data:
+  postgres-kitchen-data:
+  postgres-payment-data:
+
+
+  # Правильный порядок запуска:
+  #1. discovery-service  (Eureka)  # Eureka (чтобы найти другие сервисы)
+  #2. config-service     (Config)  # Config Server (чтобы получить конфигурацию)
+  #3. gateway-service    (Gateway) # Потом шлюз, после всех зависимостей
+  #4. auth-service       (Auth)    # Потом бизнес-сервисы
+  #5. order-service      (Order)
+  #6. kitchen-service    (Kitchen)
+  #7. payment-service    (Payment)
+  ## Без Eureka Config Service не может зарегистрироваться
+  ## Без Config Service другие сервисы не получат конфиги
+
+
+  #┌─────────────────────────────────────────────────────────────────┐
+  #│                    restaurant-network (Docker сеть)             │
+  #│                                                                 │
+  #│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
+  #│  │ postgres-auth│    │ postgres-order│   │ postgres-kitchen│    │
+  #│  │    :5432     │    │    :5432     │    │    :5432     │       │
+  #│  └──────────────┘    └──────────────┘    └──────────────┘       │
+  #│                                                                 │
+  #│  ┌──────────────┐    ┌──────────────┐                           │
+  #│  │postgres-payment│  │    redis     │                           │
+  #│  │    :5432     │    │    :6379     │                           │
+  #│  └──────────────┘    └──────────────┘                           │
+  #│                                                                 │
+  #│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
+  #│  │    kafka     │    │discovery-svc │    │ config-svc   │       │
+  #│  │    :9092     │    │    :8761     │    │    :8888     │       │
+  #│  └──────────────┘    └──────────────┘    └──────────────┘       │
+  #│                                                                 │
+  #│  ┌──────────────┐                                               │
+  #│  │ gateway-svc  │                                               │
+  #│  │    :8080     │                                               │
+  #│  └──────────────┘                                               │
+  #└─────────────────────────────────────────────────────────────────┘

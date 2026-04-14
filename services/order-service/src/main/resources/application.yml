@@ -1,0 +1,85 @@
+server:
+  port: 8082  # Это основной сервис для управления заказами
+
+
+spring:
+  application:
+    name: order-service  # Микросервис "Заказы"
+
+  #  НАСТРОЙКИ БАЗЫ ДАННЫХ
+  datasource:
+    # URL подключения к PostgreSQL для хранения заказов
+    url: jdbc:postgresql://postgres-order:5432/orderdb
+
+    username: postgres  # Имя пользователя БД
+    password: postgres  # Пароль (в проде использовать переменные окружения!)
+
+    driver-class-name: org.postgresql.Driver
+
+  #  JPA/HIBERNATE
+  jpa:
+    hibernate:
+      # ddl-auto: update - автоматически создает/обновляет таблицы
+      # Hibernate создаст таблицы:
+      # - orders (заказы)
+      # - order_items (позиции заказа)
+      # - order_history (история статусов)
+      ddl-auto: update
+
+    # show-sql: выводить SQL запросы в консоль для отладки
+    show-sql: true
+
+  # НАСТРОЙКИ KAFKA
+  # Order Service И ОТПРАВЛЯЕТ, И ПОЛУЧАЕТ сообщения
+  kafka:
+    # Адрес Kafka брокера
+    bootstrap-servers: kafka:9092
+
+    # CONSUMER
+    # Получает сообщения от других сервисов
+    consumer:
+      # group-id: группа потребителей для балансировки
+      group-id: order-group
+
+      # key-deserializer: ключ сообщения - строка
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+      # value-deserializer: тело сообщения - JSON -> Java объект
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+
+      properties:
+        # Разрешить все пакеты для десериализации (для разработки)
+        spring.json.trusted.packages: "*"
+
+    # PRODUCER
+    # Отправляет сообщения в Kafka
+    producer:
+      # key-serializer: строка -> байты
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+      # value-serializer: Java объект -> JSON
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+  #  REDIS (КЭШ)
+  data:
+    redis:
+      # Redis используется для:
+      # - Кэширования часто запрашиваемых заказов
+      # - Хранения временных данных (корзина)
+      # - Блокировок для предотвращения двойных заказов
+      # - Сессий пользователей
+      host: redis       # Адрес Redis сервера
+      port: 6379       # Стандартный порт Redis
+
+# EUREKA
+eureka:
+  client:
+    # Адрес Eureka сервера для регистрации
+    service-url:
+      defaultZone: http://discovery-service:8761/eureka/
+
+    # Скачивать реестр других сервисов (чтобы знать, кому отправлять)
+    fetch-registry: true
+
+    # Регистрироваться в Eureka (чтобы другие сервисы знали о нас)
+    register-with-eureka: true

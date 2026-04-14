@@ -1,0 +1,44 @@
+# Это единая точка входа для всех клиентов (фронтенд, мобильные приложения и т.д.)
+
+
+server:
+  port: 8080
+
+
+spring:
+  application:
+    name: gateway-service
+  cloud:
+    gateway:
+      # правила маршрутизации
+      # id	auth-service	Уникальное имя маршрута
+      #uri	lb://AUTH-SERVICE	Куда перенаправлять (lb = Load Balancer) lb:// — это load balancer (балансировщик нагрузки).
+      #predicates	Path=/auth/**	Условие срабатывания
+
+      # Можно добавить правила аутентификации
+
+      routes:
+        - id: auth-service
+          uri: lb://AUTH-SERVICE
+          predicates:
+            - Path=/auth/**
+        - id: order-service
+          uri: lb://ORDER-SERVICE
+          predicates:
+            - Path=/api/orders/**
+        - id: kitchen-service
+          uri: lb://KITCHEN-SERVICE
+          predicates:
+            - Path=/api/kitchen/**
+        - id: payment-service
+          uri: lb://PAYMENT-SERVICE
+          predicates:
+            - Path=/api/payments/**
+
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true

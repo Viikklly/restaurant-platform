@@ -1,0 +1,42 @@
+# специальный конфигурационный файл Spring Boot, который загружается ДО основного application.yml
+# подключение к Config Server ДО загрузки основного приложения
+spring:
+  application:
+    name: auth-service # Имя сервиса
+  cloud:
+    config:
+      uri: http://config-service:8888
+      fail-fast: false
+
+
+
+
+
+
+
+      # 1. Spring Boot стартует
+      #   ↓
+      #2. Загружает bootstrap.yml
+      #   - Читает: spring.application.name = auth-service
+      #   - Читает: spring.cloud.config.uri = http://localhost:8888
+      #   - Читает: fail-fast = true
+      #   ↓
+      #3. Подключается к Config Server
+      #   GET http://localhost:8888/auth-service/default
+      #   ↓
+      #4. Config Server ищет и объединяет:
+      #   - application.yml (общие настройки)
+      #   - auth-service.yml (специфичные)
+      #   ↓
+      #5. Config Server возвращает JSON со всеми настройками
+      #   ↓
+      #6. Spring Boot применяет эти настройки
+      #   - server.port = 8081
+      #   - spring.datasource.url = jdbc:postgresql://...
+      #   - spring.kafka.bootstrap-servers = ...
+      #   - eureka.client.service-url.defaultZone = ...
+      #   ↓
+      #7. Загружается локальный application.yml (если есть)
+      #   (может переопределять некоторые настройки)
+      #   ↓
+      #8. Приложение запускается на порту 8081

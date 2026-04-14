@@ -1,0 +1,77 @@
+server:
+  port: 8083 # Порт, на котором будет запущен Kitchen Service
+
+spring:
+  application:
+    # Имя приложения - используется для регистрации в Eureka
+    # и для получения конфигурации из Config Server
+    name: kitchen-service
+    # Настройка БД
+  datasource:
+    url: jdbc:postgresql://postgres-kitchen:5432/kitchendb
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      # ddl-auto: стратегия управления схемой БД
+      # update - автоматически создает/обновляет таблицы (ТОЛЬКО для разработки!)
+      # validate - только проверяет соответствие (для продакшена)
+      # create - пересоздает таблицы при каждом запуске
+      # create-drop - создает при старте, удаляет при остановке
+      ddl-auto: update
+    # show-sql: выводить SQL запросы в консоль
+    # Полезно для отладки
+    show-sql: true
+
+  kafka:
+    # Адрес Kafka брокера (сервера сообщений)
+    bootstrap-servers: kafka:9092
+
+    # CONSUMER
+    # Consumer - получает сообщения из Kafka
+    consumer:
+      # group-id: идентификатор группы потребителей
+      # Все экземпляры kitchen-service с одинаковым group-id
+      # распределяют сообщения между собой
+      group-id: kitchen-group
+
+      # key-deserializer: преобразует ключ сообщения из байтов в строку
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+      # value-deserializer: преобразует тело сообщения из JSON в объект Java
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+
+      properties:
+        # spring.json.trusted.packages: разрешенные пакеты для десериализации JSON
+        # "*" - доверять всем пакетам (для разработки)
+        # В проде лучше указать конкретные пакеты, например:
+        # "com.example.kitchen.dto, com.example.common.dto"
+        spring.json.trusted.packages: "*"
+
+    # PRODUCER
+    # Producer - отправляет сообщения в Kafka
+    producer:
+      # key-serializer: преобразует строковый ключ в байты
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+      # value-serializer: преобразует Java объект в JSON
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+  data:
+    redis:
+      host: redis
+      port: 6379
+
+  eureka:
+    client:
+      # service-url.defaultZone: адрес Eureka сервера
+      service-url:
+        defaultZone: http://discovery-service:8761/eureka/ # стандартный URL Eureka
+
+      # fetch-registry: скачивать реестр других сервисов?
+      # true - чтобы знать о других микросервисах (заказах, платежах и т.д.)
+      fetch-registry: true
+
+      # register-with-eureka: регистрировать этот сервис в Eureka?
+      # true - чтобы другие сервисы могли найти kitchen-service
+      register-with-eureka: true

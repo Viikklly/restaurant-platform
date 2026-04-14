@@ -1,0 +1,54 @@
+server:
+  # Порт, на котором будет запущен Notification Service
+  # Этот сервис ОТПРАВЛЯЕТ уведомления (email, SMS, push)
+  port: 8085
+
+spring:
+  application:
+    name: notification-service  # Микросервис "Уведомления"
+  
+  # KAFKA
+  # слушает события и отправляет уведомления
+  kafka:
+    # Адрес Kafka брокера (сервера сообщений)
+    bootstrap-servers: localhost:9092
+    
+    # CONSUMER
+    # получает сообщения из Kafka
+    # Notification Service ТОЛЬКО ЧИТАЕТ сообщения, ничего не отправляет
+    consumer:
+      # group-id: идентификатор группы потребителей
+      # Все экземпляры notification-service с одинаковым group-id
+      # распределяют уведомления между собой
+      group-id: notification-group
+      
+      # key-deserializer: преобразует ключ сообщения из байтов в строку
+      # Ключ обычно содержит ID события или тип уведомления
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      
+      # value-deserializer: преобразует тело сообщения из JSON в объект Java
+      # Например, из JSON вида {"email":"user@mail.com", "message":"Заказ готов"}
+      # в Java объект NotificationEvent
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      
+      properties:
+        # spring.json.trusted.packages: разрешенные пакеты для десериализации JSON
+        # "*" - доверять всем пакетам (для разработки)
+        spring.json.trusted.packages: "*"
+    
+    # ПРИМЕЧАНИЕ: У Notification Service НЕТ producer (отправителя)
+    # Он только слушает события, но сам их не создает
+
+# EUREKA (СЕРВИС ОБНАРУЖЕНИЯ)
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    
+    # fetch-registry: скачивать реестр других сервисов?
+    # true - чтобы знать о других микросервисах (полезно)
+    fetch-registry: true
+    
+    # register-with-eureka: регистрировать этот сервис в Eureka?
+    # true - чтобы другие сервисы могли найти notification-service
+    register-with-eureka: true
