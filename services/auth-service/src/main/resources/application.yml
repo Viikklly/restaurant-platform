@@ -1,28 +1,7 @@
-server:
-  port: 8081
-
 spring:
-  application:
-    name: auth-service
-  datasource:
-    url: jdbc:postgresql://postgres-auth:5432/authdb
-    username: postgres
-    password: postgres
-    driver-class-name: org.postgresql.Driver
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: true
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
-  main:
-    web-application-type: servlet
-  cloud:
-    gateway:
-      enabled: false
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:docker}
 
-eureka:
-  client:
-    service-url:
-      defaultZone: http://discovery-service:8761/eureka/
-    fetch-registry: true
-    register-with-eureka: true
+  config:
+    # Используем переменную окружения для URI Config Server'а
+    import: optional:configserver:${CONFIG_SERVER_URL:http://config-service:8888}

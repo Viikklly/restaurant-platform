@@ -1,0 +1,206 @@
+# для разработки
+# Только БД и брокеры (PostgreSQL, Redis, Kafka)
+# Запуск: docker-compose -f docker-compose.infra.yml up -d
+
+version: '3.8'
+
+services:
+  # БАЗЫ ДАННЫХ (отдельные для каждого сервиса)
+
+  # AUTH SERVICE DB
+  postgres-auth:
+    image: postgres:15
+    container_name: restaurant-postgres-auth
+    environment:
+      POSTGRES_DB: authdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"  # auth_db на стандартном порту
+    volumes:
+      - postgres-auth-data:/var/lib/postgresql/data
+    networks:
+      - restaurant-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d authdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ORDER SERVICE DB
+  postgres-order:
+    image: postgres:15
+    container_name: restaurant-postgres-order
+    environment:
+      POSTGRES_DB: orderdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"  # order_db на порту 5433
+    volumes:
+      - postgres-order-data:/var/lib/postgresql/data
+    networks:
+      - restaurant-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orderdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # KITCHEN SERVICE DB
+  postgres-kitchen:
+    image: postgres:15
+    container_name: restaurant-postgres-kitchen
+    environment:
+      POSTGRES_DB: kitchendb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"  # kitchen_db на порту 5434
+    volumes:
+      - postgres-kitchen-data:/var/lib/postgresql/data
+    networks:
+      - restaurant-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kitchendb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # PAYMENT SERVICE DB
+  postgres-payment:
+    image: postgres:15
+    container_name: restaurant-postgres-payment
+    environment:
+      POSTGRES_DB: paymentdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5435:5432"  # payment_db на порту 5435
+    volumes:
+      - postgres-payment-data:/var/lib/postgresql/data
+    networks:
+      - restaurant-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d paymentdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+
+
+  # REDIS (КЭШ)
+
+  redis:
+    image: redis:7-alpine
+    container_name: restaurant-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - restaurant-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  # KAFKA (БРОКЕР СООБЩЕНИЙ)
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: restaurant-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - restaurant-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: restaurant-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+    networks:
+      - restaurant-network
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+
+  # KAFKA UI (для просмотра сообщений)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: restaurant-kafka-ui
+    ports:
+      - "8085:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - restaurant-network
+    depends_on:
+      - kafka
+      - zookeeper
+
+
+  # PGADMIN (для просмотра БД)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: restaurant-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@restaurant.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    networks:
+      - restaurant-network
+    depends_on:
+      - postgres-auth
+      - postgres-order
+      - postgres-kitchen
+      - postgres-payment
+
+
+networks:
+  restaurant-network:
+    driver: bridge
+
+
+# ТОМА (ПЕРСИСТЕНТНОСТЬ ДАННЫХ)
+volumes:
+  postgres-auth-data:
+  postgres-order-data:
+  postgres-kitchen-data:
+  postgres-payment-data:
+  redis-data:

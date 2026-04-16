@@ -8,10 +8,9 @@ spring:
       uri: http://config-service:8888
       fail-fast: false
 
-
-
-
-
+  config:
+    # Импортируем конфигурацию с Config Server
+    import: optional:configserver:${spring.cloud.config.uri}
       
 
       # 1. Spring Boot стартует

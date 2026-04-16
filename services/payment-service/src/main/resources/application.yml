@@ -1,80 +1,8 @@
-server:
-  port: 8084
+
 
 spring:
-  application:
-    name: payment-service  # Микросервис "Платежи"
-  
-  # БАЗЫ ДАННЫХ (POSTGRESQL)
-  datasource:
-    url: jdbc:postgresql://postgres-payment:5432/paymentdb
-    # payment_db - база данных для хранения:
-    # - транзакций
-    # - счетов (invoices)
-    # - способов оплаты пользователей
-    # - истории платежей
-    # - чеков
-    
-    username: postgres
-    password: postgres
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:docker}
 
-    driver-class-name: org.postgresql.Driver
-  
-  # JPA/HIBERNATE
-  jpa:
-    hibernate:
-      # ddl-auto: update - автоматически создает/обновляет таблицы
-      # Hibernate создаст таблицы:
-      # - payments (платежи)
-      # - transactions (транзакции)
-      # - user_payment_methods (карты/счета пользователей)
-      # - refunds (возвраты)
-      ddl-auto: update
-
-    # show-sql: выводить SQL запросы в консоль для отладки
-    show-sql: true
-  
-  #  KAFKA
-  # Payment Service И ОТПРАВЛЯЕТ, И ПОЛУЧАЕТ сообщения о платежах
-  kafka:
-    bootstrap-servers: kafka:9092
-    
-    # CONSUMER
-    # Получает запросы на оплату от Order Service
-    consumer:
-      # group-id: группа потребителей для балансировки платежей
-      # Если запущено несколько payment-service, они распределяют нагрузку
-      group-id: payment-group
-      
-      # key-deserializer: ключ сообщения - строка (обычно ID платежа)
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      
-      # value-deserializer: тело сообщения - JSON -> Java объект PaymentRequest
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      
-      properties:
-        # Разрешить все пакеты для десериализации (для разработки)
-        # В проде указать конкретные: "com.example.payment.dto"
-        spring.json.trusted.packages: "*"
-    
-    # PRODUCER
-    # Отправляет результаты платежей
-    producer:
-      # key-serializer: строка -> байты
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      
-      # value-serializer: Java объект -> JSON (PaymentResult)
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-
-#  EUREKA
-eureka:
-  client:
-    # Адрес Eureka сервера для регистрации
-    service-url:
-      defaultZone: http://discovery-service:8761/eureka/
-    
-    # Скачивать реестр других сервисов (чтобы знать, кому отправлять)
-    fetch-registry: true
-    
-    # Регистрироваться в Eureka (чтобы другие сервисы знали о нас)
-    register-with-eureka: true
+  config:
+    import: optional:configserver:${CONFIG_SERVER_URL:http://config-service:8888}

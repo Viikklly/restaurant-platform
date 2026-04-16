@@ -7,6 +7,9 @@ spring:
     config:
       uri: http://localhost:8888
       fail-fast: true # Быстрое завершение при ошибке
+  config:
+    # Импортируем конфигурацию с Config Server
+    import: optional:configserver:${spring.cloud.config.uri}
 
 
 

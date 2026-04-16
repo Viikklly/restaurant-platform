@@ -10,8 +10,9 @@ spring:
       # fail-fast: true # Быстрое завершение при ошибке
       fail-fast: false # временно отключаем
 
-
-
+  config:
+    # Импортируем конфигурацию с Config Server
+    import: optional:configserver:${spring.cloud.config.uri}
 
 
       
