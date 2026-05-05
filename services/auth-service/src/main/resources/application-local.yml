@@ -1,0 +1,47 @@
+server:
+  port: 8081
+
+spring:
+  config:
+    activate:
+      on-profile: local
+
+  cloud:
+    config:
+      enabled: false
+
+  # Переключаемся на H2
+  datasource:
+    url: jdbc:h2:mem:authdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+
+  # Отключаем Liquibase
+  liquibase:
+    enabled: false
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+jwt:
+  secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+  expiration: 900000
+  refresh-expiration: 604800000
+
+eureka:
+  client:
+    enabled: false
+
+logging:
+  level:
+    com.restaurant: DEBUG
+    org.hibernate.SQL: DEBUG

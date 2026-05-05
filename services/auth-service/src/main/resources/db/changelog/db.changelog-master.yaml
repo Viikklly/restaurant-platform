@@ -1,0 +1,43 @@
+# При запуске Liquibase проверяет БД и применяет только новые изменения
+databaseChangeLog:
+  - changeSet:                    # Один набор изменений
+      id: 001-create-users-table  # Уникальный ID
+      author: init                # Кто создал
+      changes:                    # Что сделать
+        - createTable:            # Действие: создать таблицу
+            tableName: users
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true     # SERIAL / IDENTITY
+                  constraints:
+                    primaryKey: true      # PRIMARY KEY
+              - column:
+                  name: email
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false       # NOT NULL
+                    unique: true          # UNIQUE
+              - column:
+                  name: username
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: password
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: role
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP

@@ -8,7 +8,7 @@ spring:
       # uri: http://localhost:8888
       uri: http://config-service:8888
       # fail-fast: true # Быстрое завершение при ошибке
-      fail-fast: false # временно отключаем
+      fail-fast: true
 
   config:
     # Импортируем конфигурацию с Config Server
