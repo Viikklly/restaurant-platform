@@ -1,7 +1,6 @@
 package com.restaurant.auth_service.config;
 
 
-import com.restaurant.auth_service.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,21 +16,10 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-
-
 /*
-SecurityConfig — это конфигурация Spring Security, которая определяет:
-Какие URL доступны без токена
-/auth/register, /auth/login — открыты для всех
-Какие URL требуют аутентификации
-Всё остальное — нужно быть залогиненным
-Как проверять пароль
-Как загружать пользователя из БД
-Подключаем наш CustomUserDetailsService
-Как обрабатывать ошибки доступа
-Возвращать 401 вместо страницы логина
-*/
+ * Spring Security: сейчас все запросы permitAll (без проверки JWT в цепочке).
+ * При необходимости снова включить JWT-фильтр: app.security.jwt-filter-enabled=true и настройка authorizeHttpRequests.
+ */
 
 @Configuration
 @EnableWebSecurity      /// Включает Spring Security для веб-приложения
@@ -39,8 +27,6 @@ SecurityConfig — это конфигурация Spring Security, котора
 public class SecurityConfig {
 
     private final UserDetailsService userDetailsService;
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
-
 
     /// Это цепочка фильтров, через которые проходит каждый HTTP-запрос
     @Bean
@@ -54,23 +40,8 @@ public class SecurityConfig {
                 /// CSRF защита нужна для браузерных приложений с cookies
                 /// А приложение REST API с JWT, токен не хранится в cookies автоматически
                 .csrf(AbstractHttpConfigurer::disable)
-                /// Настраиваем авторизацию
-                .authorizeHttpRequests(auth -> auth
-                        /// Открытые эндпоинты (без токена)
-//                        .requestMatchers(
-//                                "/auth/*",   // для удобства тестирования разработки
-//                                "/auth/register",
-//                                "/auth/login",
-//                                "/auth/refresh",
-//                                "/auth/test",
-//                                "/actuator/health",
-//                                "/actuator/info"
-//                        )
-                                /// Всё остальное требует аутентификации
-                        .anyRequest()///  разрешаем все запросы без аутентификации временно, для разработки                        .permitAll()
-
-                        .authenticated()
-                )
+                /// Авторизация по JWT отключена для разработки
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
 
                 /// Ставим STATELESS (не храним сессии, так как REST API с JWT)
                 .sessionManagement(session -> session
@@ -78,9 +49,7 @@ public class SecurityConfig {
                 )
                 /// Регистрируем AuthenticationProvider
                 /// Это механизм, который проверяет логин и пароль.
-                .authenticationProvider(authenticationProvider())
-                /// Добавляем JWT фильтр ПЕРЕД стандартным фильтром аутентификации
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .authenticationProvider(authenticationProvider());
 
 
 

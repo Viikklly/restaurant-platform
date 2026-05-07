@@ -82,9 +82,7 @@ spring:
           predicates:
             - Path=/api/orders/**
           filters:
-            # JWT фильтр (проверяет токен и добавляет X-User-Id)
-            # Без него любой мог отправить запрос к /api/orders без токена!
-            - name: JwtAuthenticationFilter
+            # JwtAuthenticationFilter отключён — режим без проверки токена на Gateway
             # Rate limiting по пользователю
             #- name: RequestRateLimiter
             #  args:
@@ -100,7 +98,7 @@ spring:
                 name: orderService
                 fallbackUri: forward:/fallback/orders
           metadata:
-            description: "Order management (requires JWT)"
+            description: "Order management (auth disabled)"
 
 
 
@@ -110,7 +108,6 @@ spring:
           predicates:
             - Path=/api/kitchen/**
           filters:
-            - name: JwtAuthenticationFilter
             #- name: RequestRateLimiter
             #  args:
             #    key-resolver: "#{@ipKeyResolver}"
@@ -121,7 +118,7 @@ spring:
                 name: kitchenService
                 fallbackUri: forward:/fallback/kitchen
           metadata:
-            description: "Kitchen management (requires JWT + role)"
+            description: "Kitchen management (auth disabled)"
 
 
 
@@ -132,7 +129,6 @@ spring:
           predicates:
             - Path=/api/payments/**
           filters:
-            - name: JwtAuthenticationFilter
             #- name: RequestRateLimiter
             #  args:
             #    key-resolver: "#{@userKeyResolver}"
@@ -143,7 +139,7 @@ spring:
                 name: paymentService
                 fallbackUri: forward:/fallback/payments
           metadata:
-            description: "Payment processing (requires JWT)"
+            description: "Payment processing (auth disabled)"
 
 
 
