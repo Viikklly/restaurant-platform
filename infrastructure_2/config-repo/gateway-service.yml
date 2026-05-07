@@ -1,0 +1,304 @@
+
+# API Gateway - единая точка входа для всех клиентов
+# Все запросы идут на порт 8080, Gateway распределяет их по сервисам
+
+
+server:
+  port: 8080
+  # Порт, на котором будет запущен API Gateway
+  # Это ЕДИНАЯ ТОЧКА ВХОДА для всех клиентов
+
+
+# НАСТРОЙКИ SPRING CLOUD GATEWAY
+spring:
+  application:
+    name: gateway-service
+
+  cloud:
+    gateway:
+
+      # Глобальные фильтры (применяются ко всем маршрутам)
+      default-filters:
+        # Добавляем correlation ID в каждый запрос
+        - name: AddRequestHeader
+          args:
+            # X-Correlation-Id - сквозной идентификатор запроса. Нужен для трассировки в распределенной системе.
+            # Когда запрос проходит через 5 сервисов, по этому ID можно восстановить весь путь.
+            name: X-Correlation-Id
+            value: "${spring.cloud.gateway.correlation-id:${random.uuid}}"
+        # LogRequestFilter - логирует каждый запрос: метод, путь, статус, время выполнения.
+        # Без этого дебажить проблемы невозможно
+        # - name: LogRequestFilter
+
+
+      # routes: список маршрутов (правил перенаправления запросов)
+      # Каждый маршрут определяет: какой запрос куда отправлять
+      routes:
+
+
+        # AUTH SERVICE (СЕРВИС АУТЕНТИФИКАЦИИ)
+        - id: auth-service
+          # id: уникальный идентификатор маршрута
+          # Используется для логирования, мониторинга и отладки
+          # Должен быть уникальным в пределах Gateway
+
+          # uri: куда перенаправлять запрос
+          # lb://AUTH-SERVICE - используем балансировщик нагрузки (Load Balancer)
+          # lb = Load Balancer (ленточный балансировщик от Spring Cloud)
+          # AUTH-SERVICE - имя сервиса в Eureka (должно совпадать с spring.application.name)
+          # Gateway спрашивает у Eureka: "Где находится AUTH-SERVICE?"
+          # Eureka отвечает: "На localhost:8081"
+          # Gateway перенаправляет запрос туда
+          uri: lb://AUTH-SERVICE
+          predicates:
+            # predicates: условия (предикаты), при которых срабатывает маршрут
+            # Path=/auth/** - путь запроса должен начинаться с /auth/
+            - Path=/auth/**
+          filters:
+            # Rate limiting для защиты от брутфорса и от DDoS атак
+            # Redis хранит счетчики, чтобы ограничения работали даже при перезапуске gateway
+            #- name: RequestRateLimiter
+           #   args:
+            #    key-resolver: "#{@ipKeyResolver}"       # IP KeyResolver - защита от брутфорса на логине (один IP не может долбить бесконечно)
+            #    redis-rate-limiter.replenishRate: 5     # replenishRate: 5 означает "5 запросов в секунду"
+            #    redis-rate-limiter.burstCapacity: 10    # максимум 10 burst
+            # Circuit breaker
+            # Автоматический выключатель
+            # При ошибках → размыкаем цепь → мгновенно возвращаем fallback response
+            #Через 5 секунд пробуем снова (half-open)
+            #Если починили - закрываем цепь
+            - name: CircuitBreaker
+              args:
+                name: authService
+                fallbackUri: forward:/fallback/auth
+          metadata:
+            description: "Authentication and registration (public)"
+
+
+
+        # ORDER SERVICE (СЕРВИС ЗАКАЗОВ)
+        - id: order-service
+          uri: lb://ORDER-SERVICE
+          predicates:
+            - Path=/api/orders/**
+          filters:
+            # JWT фильтр (проверяет токен и добавляет X-User-Id)
+            # Без него любой мог отправить запрос к /api/orders без токена!
+            - name: JwtAuthenticationFilter
+            # Rate limiting по пользователю
+            #- name: RequestRateLimiter
+            #  args:
+            #    key-resolver: "#{@userKeyResolver}"       # User KeyResolver - разный лимит на пользователя (VIP клиенты могут больше, обычные меньше)
+            #    redis-rate-limiter.replenishRate: 20      # replenishRate: 20 означает "20 запросов в секунду"
+            #    redis-rate-limiter.burstCapacity: 40      # максимум 40 burst
+            # Добавляем заголовки
+            # Backend-сервис знает, что запрос пришел через Gateway, а не напрямую
+            # Можно блокировать запросы, которые идут напрямую к сервису (минуя Gateway) - безопасность
+            - AddRequestHeader=X-Request-Source, gateway
+            - name: CircuitBreaker
+              args:
+                name: orderService
+                fallbackUri: forward:/fallback/orders
+          metadata:
+            description: "Order management (requires JWT)"
+
+
+
+        # KITCHEN SERVICE (СЕРВИС КУХНИ)
+        - id: kitchen-service
+          uri: lb://KITCHEN-SERVICE
+          predicates:
+            - Path=/api/kitchen/**
+          filters:
+            - name: JwtAuthenticationFilter
+            #- name: RequestRateLimiter
+            #  args:
+            #    key-resolver: "#{@ipKeyResolver}"
+            #    redis-rate-limiter.replenishRate: 30
+            #    redis-rate-limiter.burstCapacity: 50
+            - name: CircuitBreaker
+              args:
+                name: kitchenService
+                fallbackUri: forward:/fallback/kitchen
+          metadata:
+            description: "Kitchen management (requires JWT + role)"
+
+
+
+
+        # PAYMENT SERVICE (СЕРВИС ПЛАТЕЖЕЙ)
+        - id: payment-service
+          uri: lb://PAYMENT-SERVICE
+          predicates:
+            - Path=/api/payments/**
+          filters:
+            - name: JwtAuthenticationFilter
+            #- name: RequestRateLimiter
+            #  args:
+            #    key-resolver: "#{@userKeyResolver}"
+            #    redis-rate-limiter.replenishRate: 10
+             #   redis-rate-limiter.burstCapacity: 20
+            - name: CircuitBreaker
+              args:
+                name: paymentService
+                fallbackUri: forward:/fallback/payments
+          metadata:
+            description: "Payment processing (requires JWT)"
+
+
+
+
+
+
+        # ===== NOTIFICATION SERVICE (ОПЦИОНАЛЬНО) =====
+        - id: notification-service
+          uri: lb://NOTIFICATION-SERVICE
+          predicates:
+            - Path=/api/notifications/**
+          filters:
+            #- name: JwtAuthenticationFilter
+           # - name: RequestRateLimiter
+          #  args:
+            #   key-resolver: "#{@userKeyResolver}"
+            #  redis-rate-limiter.replenishRate: 50
+            # redis-rate-limiter.burstCapacity: 100
+          metadata:
+            description: "Notifications (requires JWT)"
+
+        # FALLBACK ROUTE
+        # Когда Circuit Breaker срабатывает, Gateway перенаправляет запрос сюда
+        #Fallback возвращает понятную ошибку: "Сервис временно недоступен"
+        #Без этого пользователь увидел бы таймаут через 30 секунд или 500 ошибку
+        - id: fallback-route
+          uri: forward:/fallback
+          predicates:
+            - Path=/fallback/**
+          metadata:
+            description: "Fallback routes for circuit breakers"
+
+  # Redis для Rate Limiting
+  # Rate Limiter требует Redis для хранения счетчиков
+  #Без Redis ограничения будут работать только в одном экземпляре gateway
+  #С Redis - даже если запустишь 3 копии gateway, лимиты будут общими
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+
+# JWT Configuration (для валидации)
+app:
+  jwt:
+    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    expiration: 86400000
+
+# Resilience4j Circuit Breaker
+resilience4j:
+  circuitbreaker:
+    instances:
+      authService:
+        registerHealthIndicator: true                       # показывать статус в /actuator/health
+        slidingWindowSize: 10                               # смотрим на последние 10 запросов
+        minimumNumberOfCalls: 5                             # минимум 5 вызовов, прежде чем принимать решение
+        permittedNumberOfCallsInHalfOpenState: 3            # в полуоткрытом состоянии пробуем 3 запроса
+        automaticTransitionFromOpenToHalfOpenEnabled: true  # автоматически пробовать через N секунд
+        waitDurationInOpenState: 5s                         # сколько ждать перед попыткой восстановления
+        failureRateThreshold: 50                            # при 50% ошибок размыкаем цепь
+      orderService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 5s
+        failureRateThreshold: 50
+      kitchenService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 5s
+        failureRateThreshold: 50
+      paymentService:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 5s
+        failureRateThreshold: 50
+
+# Actuator
+# мониторинг и наблюдаемость системы.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  metrics:
+    tags:
+      application: gateway-service    # добавляет тег ко всем метрикам
+  tracing:
+    sampling:
+      probability: 1.0      # 1.0 = трассируем 100% запросов для разработки!
+
+# Eureka
+eureka:
+  client:
+    service-url:
+      defaultZone: http://discovery-service:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+
+# Logging
+logging:
+  level:
+    com.restaurant.gateway: DEBUG
+    org.springframework.cloud.gateway: INFO
+    org.springframework.security: DEBUG
+
+
+
+              # [Клиент (Браузер, Мобильное приложение)]
+              #    │
+              #    │ Все запросы идут на один адрес:
+              #    │ http://localhost:8080
+              #    │
+              #    ▼
+              #┌─────────────────────────────────────────────────────┐
+              #│              API GATEWAY :8087                      │
+              #│                                                     │
+              #│  /auth/**           → AUTH-SERVICE (8081)          │
+              #│  /api/orders/**     → ORDER-SERVICE (8082)         │
+              #│  /api/kitchen/**    → KITCHEN-SERVICE (8083)       │
+              #│  /api/payments/**   → PAYMENT-SERVICE (8084)       │
+              #│                                                     │
+              #│   /api/unknown/**  → 404 Not Found                │
+              #└─────────────────────────────────────────────────────┘
+              #    │           │           │           │
+              #    ▼           ▼           ▼           ▼
+            #[Auth]    [Order]    [Kitchen]   [Payment]
+            # :8081      :8082       :8083       :8084
+
+              # Как работает балансировка нагрузки (lb://):
+
+              # Если запущено несколько экземпляров одного сервиса:
+              # Например, ORDER-SERVICE:
+              # - instance-1: localhost:8082
+              # - instance-2: localhost:8083
+              # - instance-3: localhost:8084
+
+              # Gateway автоматически распределяет запросы:
+              # Запрос 1 → ORDER-SERVICE:8082
+              # Запрос 2 → ORDER-SERVICE:8083
+              # Запрос 3 → ORDER-SERVICE:8084
+              # Запрос 4 → ORDER-SERVICE:8082 (снова)
+
+              # Это называется Round Robin (по кругу)

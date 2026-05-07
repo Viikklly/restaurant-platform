@@ -1,0 +1,52 @@
+# ============================================
+# config-service.yml
+# ============================================
+# Config Server - централизованное хранилище конфигураций
+# Все микросервисы получают настройки отсюда
+# ============================================
+
+server:
+  port: 8888
+  # Стандартный порт Spring Cloud Config Server
+  # Доступен по адресу: http://localhost:8888
+  # Другие сервисы подключаются к нему через bootstrap.yml
+
+spring:
+  application:
+    name: config-service
+  
+  # ========== ВАЖНО: указываем профиль native ==========
+  profiles:
+    active: native
+    # native - читаем конфиги из файловой системы
+    # git - читаем из Git репозитория (для продакшена)
+  
+  cloud:
+    config:
+      server:
+        # ===== NATIVE (ФАЙЛОВАЯ СИСТЕМА) - для разработки =====
+        native:
+          # search-locations: где искать конфигурационные файлы
+          search-locations: file:///${user.dir}/infrastructure/config-repo
+          # В Docker будет переопределено через volume
+
+
+# EUREKA (регистрируем Config Server)
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka/}
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${random.uuid}
+
+
+# ЛОГИРОВАНИЕ (видеть, какие конфиги отдаются)
+logging:
+  level:
+    com.netflix.discovery: INFO
+    org.springframework.cloud.config: DEBUG  # Показывает, какие файлы загружены
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [${spring.application.name}] [%thread] %-5level %logger{36} - %msg%n"
