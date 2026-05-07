@@ -57,19 +57,19 @@ public class SecurityConfig {
                 /// Настраиваем авторизацию
                 .authorizeHttpRequests(auth -> auth
                         /// Открытые эндпоинты (без токена)
-                        .requestMatchers(
-                                "/auth/*",   // для удобства тестирования разработки
-                                "/auth/register",
-                                "/auth/login",
-                                "/auth/refresh",
-                                "/auth/test",
-                                "/actuator/health",
-                                "/actuator/info"
-                        )
-                        .permitAll()
+//                        .requestMatchers(
+//                                "/auth/*",   // для удобства тестирования разработки
+//                                "/auth/register",
+//                                "/auth/login",
+//                                "/auth/refresh",
+//                                "/auth/test",
+//                                "/actuator/health",
+//                                "/actuator/info"
+//                        )
+                                /// Всё остальное требует аутентификации
+                        .anyRequest()///  разрешаем все запросы без аутентификации временно, для разработки                        .permitAll()
 
-                        /// Всё остальное требует аутентификации
-                        .anyRequest().authenticated()
+                        .authenticated()
                 )
 
                 /// Ставим STATELESS (не храним сессии, так как REST API с JWT)

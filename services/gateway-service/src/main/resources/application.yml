@@ -1,6 +1,37 @@
+server:
+  port: 8080
+
 spring:
+  application:
+    name: gateway-service
   main:
     web-application-type: reactive
+  cloud:
+    gateway:
+      routes:
+        - id: order-service
+          uri: lb://ORDER-SERVICE
+          predicates:
+            - Path=/api/orders/**
+          filters:
+            - AddRequestHeader=X-Request-Source, gateway
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://discovery-service:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway,routes
+      base-path: /actuator
+  endpoint:
+    gateway:
+      enabled: true
 
 logging:
   level:

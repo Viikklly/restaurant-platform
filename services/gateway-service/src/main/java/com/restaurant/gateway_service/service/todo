@@ -1,0 +1,4 @@
+JwtAuthenticationFilter - реализовать
+LogRequestFilter - реализовать
+RequestRateLimiter
+infrastructure/config-repo/gateway-service.yml - включить в настройках

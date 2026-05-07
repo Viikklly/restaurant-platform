@@ -1,5 +1,5 @@
 # полная настройка, где все сервисы
-version: '3.8'
+
 
 services:
   # Базы данных
@@ -7,6 +7,7 @@ services:
   # AUTH SERVICE
   postgres-auth:
     image: postgres:15
+    container_name: restaurant-postgres-auth
     environment:
       POSTGRES_DB: authdb
       POSTGRES_USER: postgres
@@ -18,10 +19,22 @@ services:
       - postgres-auth-data:/var/lib/postgresql/data
     networks:
       - restaurant-network
+    healthcheck:      # проверяет, жив ли контейнер (не просто запущен, а реально работает)
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d authdb" ]
+      # pg_isready - утилита PostgreSQL, которая проверяет, готова ли БД
+      #   -U postgres - пользователь postgres
+      #   -d authdb  - база данных authdb
+      # Возвращает:
+      #   0 - БД готова к работе
+      #   1 - БД не готова
+      interval: 10s   # Каждые 10 секунд Docker запускает проверку
+      timeout: 5s     # Ждём ответа 5 секунд (если дольше - считаем failed)
+      retries: 5      # После 5 неудачных проверок подряд → контейнер unhealthy
 
   # ORDER SERVICE
   postgres-order:
     image: postgres:15
+    container_name: restaurant-postgres-order
     environment:
       POSTGRES_DB: orderdb
       POSTGRES_USER: postgres
@@ -32,10 +45,16 @@ services:
       - postgres-order-data:/var/lib/postgresql/data
     networks:
       - restaurant-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d orderdb" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # KITCHEN SERVICE
   postgres-kitchen:
     image: postgres:15
+    container_name: restaurant-postgres-kitchen
     environment:
       POSTGRES_DB: kitchendb
       POSTGRES_USER: postgres
@@ -46,10 +65,16 @@ services:
       - postgres-kitchen-data:/var/lib/postgresql/data
     networks:
       - restaurant-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d kitchendb" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # PAYMENT SERVICE
   postgres-payment:
     image: postgres:15
+    container_name: restaurant-postgres-payment
     environment:
       POSTGRES_DB: paymentdb
       POSTGRES_USER: postgres
@@ -60,6 +85,11 @@ services:
       - postgres-payment-data:/var/lib/postgresql/data
     networks:
       - restaurant-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d paymentdb" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ------------ // ------------
   # REDIS (КЭШ)
@@ -68,6 +98,7 @@ services:
     image: redis:7 # версия 7
     ports:
       - "6379:6379" # Redis доступен на localhost:6379 для приложений на хосте
+    container_name: restaurant-redis
     networks:
       - restaurant-network
        # restaurant-network — это изолированный виртуальный коммутатор.
@@ -79,12 +110,34 @@ services:
       # Официант (gateway-service) принимает заказы от клиентов
       # Кассир (payment-service) общается с банком (через Kafka)
       # Все это внутри одной сети ресторана, но изолировано от соседних магазинов
-
-
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # KAFKA (БРОКЕР СООБЩЕНИЙ)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: restaurant-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - restaurant-network
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "localhost", "2181" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
   kafka:
     image: confluentinc/cp-kafka:latest  # latest — последняя версия с поддержкой KRaft
+    container_name: restaurant-kafka
     ports:
       - "9092:9092"  # Для подключения с хоста
       - "29092:29092"  # Для подключения внутри Docker сети
@@ -129,11 +182,75 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
 
+
       #  ДОПОЛНИТЕЛЬНО: ОТКЛЮЧАЕМ ПРОВЕРКУ ПОЛИТИК (ДЛЯ РАЗРАБОТКИ)
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: true  # Автоматически создавать топики при отправке сообщений
 
+      # ОЧЕНЬ ВАЖНО для KRaft: инициализация кластера
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"  # Уникальный ID кластера (можно любой)
     networks:
       - restaurant-network
+    volumes:
+      - kafka-data:/var/lib/kafka/data  # для персистентности
+    healthcheck:
+      test: [ "CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+
+  # Kafka UI (для просмотра сообщений)
+  # Настройка Веб-интерфейса, который позволяет видеть все сообщения в Kafka без командной строки.
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: restaurant-kafka-ui
+    ports:
+      - "8085:8080"
+      # Локальный порт:8085 → порт контейнера:8080
+      # Открываешь в браузере: http://localhost:8085
+    environment:
+      # Настройка первого кластера Kafka
+      KAFKA_CLUSTERS_0_NAME: local
+      # Имя кластера (показывается в UI)
+
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      # Адрес Kafka внутри Docker сети
+      # kafka - имя сервиса в docker-compose
+      # 29092 - internal порт (для общения внутри Docker)
+
+
+    networks:
+      - restaurant-network
+    depends_on:
+      - kafka
+
+
+
+  # PGADMIN (для просмотра БД)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    # dpage/pgadmin4 - официальный образ PGAdmin
+    # :latest - последняя версия
+    container_name: restaurant-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@restaurant.com
+      # Логин для входа в PGAdmin (email)
+      PGADMIN_DEFAULT_PASSWORD: admin
+      # Пароль для входа
+
+    ports:
+      - "5050:80"
+    # Локальный порт:5050 → порт контейнера:80
+    # Открываешь в браузере: http://localhost:5050
+    networks:
+      - restaurant-network
+    depends_on:
+      - postgres-auth
+      - postgres-order
+      - postgres-kitchen
+      - postgres-payment
+      # Ждёт, пока все БД запустятся
 
   # ------------ // ------------
   # МИКРОСЕРВИСЫ
@@ -152,6 +269,11 @@ services:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
     networks:
       - restaurant-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8761/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   # ------------ // ------------
   # CONFIG SERVICE (SPRING CLOUD CONFIG)
@@ -175,6 +297,11 @@ services:
       - ./infrastructure/config-repo:/config-repo
     networks:
       - restaurant-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8888/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   # ------------ // ------------
   # API GATEWAY
@@ -205,48 +332,65 @@ services:
   # AUTH SERVICE
   auth-service:
     build: ./services/auth-service
+    container_name: restaurant-auth-service
     ports:
       - "8081:8081"
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      SPRING_CLOUD_CONFIG_ENABLED: false
+      SPRING_CLOUD_CONFIG_ENABLED: true
       SPRING_MAIN_WEB_APPLICATION_TYPE: servlet
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
       EUREKA_CLIENT_ENABLED: true
     networks:
       - restaurant-network
     depends_on:
-      - discovery-service
-      - config-service
-      - postgres-auth
-      - kafka
-      - redis
+      discovery-service:
+        condition: service_healthy
+      config-service:
+        condition: service_healthy
+      postgres-auth:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   # ------------ // ------------
   # ORDER SERVICE
   order-service:
     build: ./services/order-service
+    container_name: restaurant-order-service
     ports:
       - "8082:8082"
+      - "5005:5005"    # для отладки
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      SPRING_CLOUD_CONFIG_ENABLED: false
+      # для отладки
+      JAVA_TOOL_OPTIONS: "-agentlib:jdwp=transport=dt_socket,address=*:5005,server=y,suspend=n"
+
+      SPRING_CLOUD_CONFIG_ENABLED: true
       SPRING_MAIN_WEB_APPLICATION_TYPE: servlet
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
       EUREKA_CLIENT_ENABLED: true
     networks:
       - restaurant-network
     depends_on:
-      - discovery-service
-      - config-service
-      - postgres-order
-      - kafka
-      - redis
+      discovery-service:
+        condition: service_healthy
+      config-service:
+        condition: service_healthy
+      postgres-order:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   # ------------ // ------------
   # KITCHEN SERVICE
   kitchen-service:
     build: ./services/kitchen-service
+    container_name: restaurant-kitchen-service
     ports:
       - "8083:8083"
     environment:
@@ -257,16 +401,22 @@ services:
     networks:
       - restaurant-network
     depends_on:
-      - discovery-service
-      - config-service
-      - postgres-kitchen
-      - kafka
-      - redis
+      discovery-service:
+        condition: service_healthy
+      config-service:
+        condition: service_healthy
+      postgres-kitchen:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   # ------------ // ------------
   # PAYMENT SERVICE
   payment-service:
     build: ./services/payment-service
+    container_name: restaurant-payment-service
     ports:
       - "8084:8084"
     environment:
@@ -277,11 +427,16 @@ services:
     networks:
       - restaurant-network
     depends_on:
-      - discovery-service
-      - config-service
-      - postgres-payment
-      - kafka
-      - redis
+      discovery-service:
+        condition: service_healthy
+      config-service:
+        condition: service_healthy
+      postgres-payment:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 
 # СЕТИ
@@ -308,7 +463,8 @@ volumes:
   postgres-order-data:
   postgres-kitchen-data:
   postgres-payment-data:
-
+  redis-data:
+  kafka-data:
 
   # Правильный порядок запуска:
   #1. discovery-service  (Eureka)  # Eureka (чтобы найти другие сервисы)

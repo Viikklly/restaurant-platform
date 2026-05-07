@@ -13,6 +13,27 @@ import static reactor.netty.http.HttpConnectionLiveness.log;
 /// FallbackController - это контроллер, который возвращает ответы когда основной сервис не доступен.
 public class FallbackController {
 
+
+    @GetMapping("/orders")
+    public ResponseEntity<Map<String, Object>> ordersFallback() {
+        return createFallbackResponse("Order service is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    @GetMapping("/payments")
+    public ResponseEntity<Map<String, Object>> paymentsFallback() {
+        return createFallbackResponse("Payment service is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    @GetMapping("/kitchen")
+    public ResponseEntity<Map<String, Object>> kitchenFallback() {
+        return createFallbackResponse("Kitchen service is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    @GetMapping("/notifications")
+    public ResponseEntity<Map<String, Object>> notificationsFallback() {
+        return createFallbackResponse("Notification service is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
     /// Fallback для Auth Service
     @GetMapping("/auth")
     public ResponseEntity<Map<String, Object>> authFallback() {
