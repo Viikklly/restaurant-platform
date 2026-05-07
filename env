@@ -1,0 +1,32 @@
+
+# ОБЩИЕ ПЕРЕМЕННЫЕ ДЛЯ ВСЕХ СЕРВИСОВ
+# Этот файл загружается docker-compose и может использоваться IDE
+# ТАК КАК УЧЕБНЫЙ ПРОЕКТ, ДОБАВИМ В GIT. В ДРУГИХ СЛУЧАЯХ - НЕ КОММИТИТЬ
+
+
+
+ENVIRONMENT=development
+SPRING_PROFILES_ACTIVE=docker
+
+
+NETWORK_NAME=restaurant-network
+
+#  EUREKA
+EUREKA_URI=http://discovery-service:8761/eureka/
+
+# KAFKA
+KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+KAFKA_GROUP_ID_PREFIX=restaurant
+
+# REDIS
+REDIS_HOST=redis
+REDIS_PORT=6379
+
+# ЛОГИРОВАНИЕ
+LOG_LEVEL=INFO
+LOG_PATH=./logs
+
+#  ДАННЫЕ ДЛЯ ТЕСТОВ
+TEST_DB_URL=jdbc:h2:mem:testdb
+TEST_DB_USER=sa
+TEST_DB_PASSWORD=
