@@ -1,0 +1,359 @@
+# application.yml - ОБЩИЕ НАСТРОЙКИ ДЛЯ ВСЕХ МИКРОСЕРВИСОВ
+
+# application.yml + auth-service.yml = полный конфиг для Auth Service
+
+
+
+# EUREKA (СЕРВИС ОБНАРУЖЕНИЯ)
+# - Без Eureka: сервис A должен знать IP и порт сервиса B (например: 192.168.1.100:8082)
+# - С Eureka: сервис A спрашивает "Где находится ORDER-SERVICE?" и получает адрес
+# - Это позволяет добавлять новые копии без изменения кода
+
+eureka:
+  client:
+    # service-url: куда сервис будет отправлять запросы на регистрацию
+    service-url:
+      defaultZone: http://discovery-service:8761/eureka/# 8761 - стандартный порт Eureka Serve
+    # fetch-registry: скачивать ли реестр всех сервисов
+    # true (рекомендуется) - сервис знает о всех других сервисах
+    # false - сервис знает только о себе (не подходит для микросервисов)
+    fetch-registry: true
+
+    # register-with-eureka: регистрироваться ли в Eureka
+    # true - этот сервис будет виден другим сервисам
+    register-with-eureka: true
+
+    # registry-fetch-interval-seconds: как часто обновлять реестр сервисов
+    registry-fetch-interval-seconds: 10
+
+  instance:
+    # prefer-ip-address: использовать IP вместо hostname
+    # true - в Docker и Kubernetes hostname может не резолвиться, IP работает всегда
+    # false - использовать hostname (только для локальной разработки)
+    prefer-ip-address: true
+
+    # instance-id: уникальный идентификатор экземпляра сервиса
+    # Нужен, когда запущено несколько копий одного сервиса (масштабирование)
+    # ${spring.application.name} - имя сервиса (например, auth-service)
+    # ${random.uuid} - случайный UUID, чтобы различать копии
+    instance-id: ${spring.application.name}:${random.uuid}
+
+    # lease-renewal-interval-in-seconds: как часто посылать сигнал "я жив"
+    # 30 секунд - стандартное значение
+    lease-renewal-interval-in-seconds: 30
+
+    # lease-expiration-duration-in-seconds: через сколько удалить сервис при отсутствии heartbeat
+    # 90 секунд (3 пропущенных heartbeat по 30 секунд)
+    lease-expiration-duration-in-seconds: 90
+
+
+# MANAGEMENT (AKTYATOP - МОНИТОРИНГ)
+# - Проверять, жив ли сервис (health check для Docker/K8s)
+# - Собирать метрики (количество запросов, время ответа, использование памяти)
+# - Отслеживать распределенные запросы через трассировку
+# - Получать информацию о версии и настройках сервиса
+
+
+management:
+  endpoints:
+    web:
+      # exposure: какие эндпоинты доступны через HTTP
+      exposure:
+        include: health,info,metrics,prometheus
+        # health - проверка здоровья: GET /actuator/health
+        #   Возвращает: {"status": "UP"} или {"status": "DOWN"}
+        #   Docker/K8s используют это для проверки, перезапускать ли контейнер
+
+        # info - информация о сервисе: GET /actuator/info
+        #   Возвращает: {"app": "auth-service", "version": "1.0.0"}
+        #   Полезно для версионирования и документации
+
+        # metrics - метрики: GET /actuator/metrics
+        #   Возвращает: список всех доступных метрик
+        #   Примеры: jvm.memory.used, http.server.requests, process.cpu.usage
+
+        # prometheus - метрики в формате Prometheus: GET /actuator/prometheus
+        #   Возвращает метрики в текстовом формате, который читает Prometheus
+        #   Prometheus собирает эти данные каждые N секунд
+      base-path: /actuator
+      # Все эндпоинты доступны по /actuator/*
+      # Например: http://localhost:8081/actuator/health
+
+  endpoint:
+    health:
+      # show-details: показывать подробную информацию о здоровье
+      show-details: always
+      # always - всегда показывать детали
+      # when-authorized - только для авторизованных
+      # never - не показывать детали
+
+      show-components: always
+      # Показывает список компонентов, которые проверяются
+      # Полезно для отладки - сразу видно, какой компонент упал
+
+    metrics:
+      enabled: true
+      # Включает сбор метрик
+      # Метрики автоматически собираются Spring Boot:
+      # - HTTP запросы (количество, длительность, статусы)
+      # - JVM (память, GC, потоки)
+      # - Система (CPU, файловая система)
+      # - БД (пул соединений, запросы)
+      # - Kafka (сообщения, задержки)
+
+    prometheus:
+      enabled: true
+      # Включает экспорт метрик в формате Prometheus
+      # Prometheus - популярная система мониторинга
+      # Grafana визуализирует эти метрики в красивые графики
+
+  metrics:
+    # tags: добавляет дополнительные метки ко всем метрикам
+    tags:
+      application: ${spring.application.name}
+      # Добавляет тег "application=auth-service" к каждой метрике.
+      # Позволяет в Prometheus фильтровать метрики по сервису.
+
+  tracing:
+    sampling:
+      # probability: вероятность трассировки запроса (0.0 - 1.0)
+      probability: 1.0
+      # 1.0 = 100% - трассируем каждый запрос (для отладки)
+      # 0.1 = 10% - трассируем каждый 10-й запрос
+      # Что такое трассировка:
+      # Запрос от клиента → Gateway → Order Service → Payment Service
+      # Без трассировки: видим отдельные логи, но не видим связь
+      # С трассировкой: видим весь путь запроса в Jaeger:
+      #   [Gateway: 10ms] → [Order: 50ms] → [Payment: 30ms]
+      #   Общее время: 90ms
+      # Как работает:
+      # 1. Gateway генерирует TraceId (уникальный ID запроса)
+      # 2. Передает его в заголовке X-B3-TraceId в следующий сервис
+      # 3. Все сервисы логируют этот TraceId
+      # 4. Jaeger собирает все отрезки (Spans) и рисует схему
+
+
+#  SPRING
+
+spring:
+
+  # РАБОТА С БАЗОЙ ДАННЫХ
+  jpa:
+    # open-in-view: держать ли соединение с БД открытым во время обработки запроса
+    open-in-view: false
+    # false - закрывать соединение сразу после запроса
+    # true - держать открытым весь запрос (риски deadlock)
+
+    # show-sql: выводить SQL запросы в консоль
+    show-sql: true
+    # true - видим все SQL запросы в логах
+
+    properties:
+      hibernate:
+        jdbc:
+          # batch_size: сколько SQL запросов группировать в один
+          batch_size: 20
+
+          # fetch_size: сколько строк читать за один раз
+          fetch_size: 100
+
+        # order_inserts: сортировать вставки по типу сущности
+        order_inserts: true
+        # true - группируем вставки по типу
+        #   Вместо: INSERT User, INSERT Order, INSERT User, INSERT Order
+        #   Делаем: INSERT User, INSERT User, INSERT Order, INSERT Order
+        #   Быстрее из-за batch_size
+
+        # order_updates: сортировать обновления по типу сущности
+        order_updates: true
+
+        # generate_statistics: собирать статистику Hibernate
+        generate_statistics: false
+        # Статистика включает: количество запросов, время выполнения
+
+
+  # ПУЛ СОЕДИНЕНИЙ HIKARICP - быстрый пул соединений для Java
+  # Пул соединений: переиспользует соединения с БД, не создаёт каждый раз заново
+
+  datasource:
+    hikari:
+      # maximum-pool-size: максимальное количество соединений в пуле
+      maximum-pool-size: 10
+      # 10 - для большинства микросервисов достаточно
+
+      # minimum-idle: минимальное количество idle соединений
+      minimum-idle: 5
+
+      # connection-timeout: таймаут ожидания соединения из пула (мс)
+      connection-timeout: 30000 # 30 секунд
+      # Если все 10 соединений заняты, запрос ждёт 30 секунд
+
+
+      # idle-timeout: время жизни idle соединения (мс)
+      idle-timeout: 300000 # 5 минут
+      # Если соединение не использовалось 5 минут - закрываем его
+
+      # max-lifetime: максимальное время жизни соединения (мс)
+      max-lifetime: 1800000 # 30 минут
+      # Принудительно пересоздаём соединение каждые 30 минут
+      # Предотвращает проблемы с "битыми" соединениями
+
+      # pool-name: имя пула (видно в логах и метриках)
+      pool-name: ${spring.application.name}-pool
+      # Будет видно: auth-service-pool, order-service-pool
+
+
+  #  KAFKA (БРОКЕР СООБЩЕНИЙ)
+  # - Асинхронная связь между сервисами (сервисы не ждут друг друга)
+  # - Надёжность (сообщения не теряются, даже если сервис упал)
+  # - Масштабирование (много потребителей одной очереди)
+  # - Повторная обработка (можно перечитать сообщения заново)
+
+  kafka:
+    # Общие настройки для producer и consumer
+    properties:
+      # enable.idempotence: гарантия уникальности сообщений
+      enable.idempotence: false
+      # false - для простоты в разработке
+      # true - гарантия, что сообщение не будет отправлено дважды
+      # Включение добавляет накладные расходы
+
+      # max.in.flight.requests.per.connection: сколько запросов одновременно
+      max.in.flight.requests.per.connection: 5
+      # 5 - отправляем до 5 сообщений параллельно
+
+    # CONSUMER (ПОТРЕБИТЕЛЬ СООБЩЕНИЙ)
+    consumer:
+      # auto-offset-reset: с какого места читать, если нет сохранённой позиции
+      auto-offset-reset: earliest
+      # earliest - читать с самого начала (получим все старые сообщения)
+      #   При первом запуске прочитает все заказы, которые уже есть
+      # latest - читать только новые сообщения
+      #   Старые заказы не получим
+      # none - ошибка, если нет сохранённой позиции
+
+      # enable-auto-commit: автоматически подтверждать прочитанные сообщения
+      enable-auto-commit: false
+      # false - подтверждаем ВРУЧНУЮ после успешной обработки
+      #   Если сервис упал после обработки, но до коммита - не потеряем
+      # true - автоматически подтверждать
+      #   Риск потерять сообщение при падении
+
+      # max-poll-records: сколько сообщений читать за один раз
+      max-poll-records: 100
+      # 100 - читаем пачку из 100 сообщений
+
+      # key-deserializer: как превратить ключ из байтов в строку
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # ключ - строка (ID заказа, ID пользователя)
+
+      # value-deserializer: как превратить тело из JSON в Java объект
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      # JSON → Java объект (OrderEvent, PaymentEvent и т.д.)
+
+      properties:
+        # spring.json.trusted.packages: какие пакеты разрешены для десериализации
+        spring.json.trusted.packages: "*"
+        # "*" - доверять всем (для разработки)
+
+    # PRODUCER (ОТПРАВИТЕЛЬ СООБЩЕНИЙ)
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      # Обратные операции: String → байты, Java объект → JSON
+
+      # acks: сколько подтверждений нужно получить от брокера
+      acks: 1
+      # 0 - нет подтверждения (самый быстрый, может потерять данные)
+      # 1 - подтверждение от лидера (хороший баланс)
+      # all - подтверждение от всех реплик (самый надёжный, медленный)
+
+      # retries: сколько раз повторять при ошибке
+      retries: 3
+      # После 3 неудач - ошибка
+
+    # LISTENER (СЛУШАТЕЛЬ СООБЩЕНИЙ)
+    listener:
+      # ack-mode: режим подтверждения
+      ack-mode: MANUAL
+      # MANUAL - подтверждаем вручную (вызываем acknowledgment.acknowledge())
+      # RECORD - подтверждать каждую запись автоматически
+      # BATCH - подтверждать всю пачку
+      # MANUAL_IMMEDIATE - ручное подтверждение, но сразу
+
+      # concurrency: сколько потоков-слушателей запустить
+      concurrency: 3
+      # 3 - обрабатываем 3 сообщения параллельно
+      # Не путать с partitions: concurrency не может быть больше partitions
+
+
+  # REDIS (КЭШ-СЕРВЕР)
+  # - Кэширование (быстрые ответы, не ходим в БД)
+  # - Сессии пользователей (храним между запросами)
+  # - Блокировки (предотвращаем двойную обработку)
+  # - Счётчики (статистика в реальном времени)
+
+  data:
+    redis:
+      # timeout: таймаут подключения к Redis
+      timeout: 2000ms # 2 секунды
+      # Если Redis не отвечает 2 секунды - ошибка
+
+      # lettuce: клиент для Redis (асинхронный, неблокирующий)
+      lettuce:
+        pool:
+          # max-active: максимум активных соединений
+          max-active: 8 # сколько соединений может быть активно одновременно
+
+          # max-idle: максимум idle соединений
+          max-idle: 8 # сколько соединений может ждать в пуле
+
+          # min-idle: минимум idle соединений
+          min-idle: 2 # всегда держим 2 соединения готовыми
+
+          # max-wait: сколько ждать соединение, если пул пуст
+          max-wait: -1ms # -1ms = ждать бесконечно
+
+
+
+# ЛОГИРОВАНИЕ
+
+logging:
+  # pattern: формат вывода логов
+  pattern:
+    # console: формат для вывода в консоль
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [${spring.application.name}] [%thread] %-5level %logger{36} - %msg%n"
+
+    # file: формат для файла (такой же)
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [${spring.application.name}] [%thread] %-5level %logger{36} - %msg%n"
+
+  # file: настройки файла логов
+  file:
+    # name: путь к файлу
+    name: logs/${spring.application.name}.log
+    # logs/auth-service.log - отдельный файл для каждого сервиса
+    # Удобно: можно смотреть логи одного сервиса, не отвлекаясь на другие
+
+    # max-size: максимальный размер одного файла
+    max-size: 1MB
+    # 1MB - при достижении этого размера создаётся новый файл
+
+    # max-history: сколько старых файлов хранить
+    max-history: 3
+
+  # level: уровень логирования для разных пакетов
+  level:
+
+    com.restaurant: INFO
+    # OFF - ничего не логировать
+    # ERROR - только ошибки
+    # WARN - ошибки + предупреждения
+    # INFO - ошибки + предупреждения + информацию о действиях (рекомендуется для прода)
+    # DEBUG - всё + отладочную информацию (для разработки)
+    # TRACE - всё + максимальные детали (для поиска сложных багов)
+
+    # spring-web: логи Spring Web (запросы, ответы)
+    org.springframework.web: INFO
+
+    # spring-kafka: логи Kafka (сообщения, консьюмеры)
+    org.springframework.kafka: INFO

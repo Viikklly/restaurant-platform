@@ -1,0 +1,40 @@
+
+# application.yml + auth-service.yml = полный конфиг
+
+
+
+server:
+  port: 8081
+
+spring:
+  application:
+    name: auth-service        # Имя в Eureka (другие сервисы ищут по этому имени)
+  
+  # БД
+  datasource:
+    # URL подключения к PostgreSQL
+    url: jdbc:postgresql://postgres-auth:5432/authdb
+
+    username: ${AUTH_DB_USER:postgres}
+    password: ${AUTH_DB_PASSWORD:postgres}
+    
+    driver-class-name: org.postgresql.Driver
+  
+  # НАСТРОЙКИ JPA
+  jpa:
+    hibernate:
+      ddl-auto: update        # update - создаёт/обновляет таблицы при запуске
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://discovery-service:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+  
+  # Веб-тип приложения
+  main:
+    web-application-type: servlet

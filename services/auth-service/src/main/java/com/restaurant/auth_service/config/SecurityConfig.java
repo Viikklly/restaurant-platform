@@ -25,7 +25,7 @@ SecurityConfig — это конфигурация Spring Security, котора
 Какие URL доступны без токена
 /auth/register, /auth/login — открыты для всех
 Какие URL требуют аутентификации
-Всё остальное — нужно быть залогиненным
+Всё остальное — должно быть залогиненным
 Как проверять пароль
 Как загружать пользователя из БД
 Подключаем наш CustomUserDetailsService
@@ -39,7 +39,7 @@ SecurityConfig — это конфигурация Spring Security, котора
 public class SecurityConfig {
 
     private final UserDetailsService userDetailsService;
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    //private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
 
     /// Это цепочка фильтров, через которые проходит каждый HTTP-запрос
@@ -67,9 +67,10 @@ public class SecurityConfig {
 //                                "/actuator/info"
 //                        )
                                 /// Всё остальное требует аутентификации
-                        .anyRequest()///  разрешаем все запросы без аутентификации временно, для разработки                        .permitAll()
+                        .anyRequest()///  разрешаем все запросы без аутентификации временно, для разработки
+                                .permitAll()
 
-                        .authenticated()
+                        //.authenticated()
                 )
 
                 /// Ставим STATELESS (не храним сессии, так как REST API с JWT)
@@ -78,9 +79,9 @@ public class SecurityConfig {
                 )
                 /// Регистрируем AuthenticationProvider
                 /// Это механизм, который проверяет логин и пароль.
-                .authenticationProvider(authenticationProvider())
+                .authenticationProvider(authenticationProvider());
                 /// Добавляем JWT фильтр ПЕРЕД стандартным фильтром аутентификации
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                //.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
 
 

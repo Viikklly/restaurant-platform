@@ -1,0 +1,27 @@
+
+server:
+  port: 8084
+
+spring:
+  application:
+    name: payment-service
+  
+  datasource:
+    url: jdbc:postgresql://postgres-payment:5432/paymentdb
+    username: ${PAYMENT_DB_USER:postgres}
+    password: ${PAYMENT_DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: update
+  
+  kafka:
+    bootstrap-servers: kafka:9092
+    consumer:
+      group-id: payment-group
+
+
+payment:
+  max-amount: 10000       # Максимальная сумма для успешного платежа
+  delay-ms: 2000          # Симуляция задержки платежной системы

@@ -29,23 +29,23 @@ public class OrderService {
     public OrderResponseDTO createOrder(OrderCreateRequestDTO request) {
         log.info("📝 Начало создания заказа для userId: {}", request.getUserId());
 
-        ///  1. Создаём заказ в БД
+        /// Создаём заказ в БД
         Order order = new Order();
         order.setUserId(request.getUserId());
         order.setStatus(OrderStatus.PENDING.name());
         order.setTotalAmount(request.getTotalAmount());
         order.setCreatedAt(LocalDateTime.now());
 
-        // Временно не сохраняем OrderItem - сначала запустим приложение
+        /// Временно не сохраняем OrderItem - сначала запустим приложение
         if (request.getItems() != null && !request.getItems().isEmpty()) {
-            log.warn("⚠️ OrderItems временно не сохраняются - будет добавлено позже");
+            log.warn(" OrderItems временно не сохраняются - будет добавлено позже");
         }
 
         Order savedOrder = orderRepository.save(order);
-        log.info("✅ Заказ сохранён с ID: {}", savedOrder.getId());
+        log.info(" Заказ сохранён с ID: {}", savedOrder.getId());
 
 
-        // 2. Отправляем событие в Kafka
+        /// 2. Отправляем событие в Kafka
         OrderCreatedEvent event = new OrderCreatedEvent(
                 savedOrder.getId(),
                 savedOrder.getUserId(),
@@ -53,7 +53,7 @@ public class OrderService {
                 savedOrder.getStatus()
         );
         kafkaTemplate.send("order.created", event);
-        log.info("📤 Событие отправлено в топик 'order.created'");
+        log.info(" Событие отправлено в топик 'order.created'");
 
         return new OrderResponseDTO(
                 savedOrder.getId(),
@@ -64,7 +64,7 @@ public class OrderService {
     }
 
 
-    // Слушаем результат оплаты
+    /// Слушаем результат оплаты
     @KafkaListener(topics = "payment.processed", groupId = "order-group")
     public void handlePaymentResult(PaymentProcessedEvent event) {
         log.info("📥 Получен результат оплаты для заказа #{}: {}",
@@ -72,7 +72,7 @@ public class OrderService {
 
         Order order = orderRepository.findById(event.getOrderId()).orElse(null);
         if (order == null) {
-            log.error("❌ Заказ #{} не найден", event.getOrderId());
+            log.error(" Заказ #{} не найден", event.getOrderId());
             return;
         }
 
@@ -81,18 +81,18 @@ public class OrderService {
             order.setStatus(OrderStatus.PAID.name());
             order.setUpdatedAt(LocalDateTime.now());
             orderRepository.save(order);
-            log.info("✅ Заказ #{} оплачен, статус → PAID", event.getOrderId());
+            log.info("Заказ #{} оплачен, статус → PAID", event.getOrderId());
 
             // Отправляем событие на кухню
             kafkaTemplate.send("order.paid", event.getOrderId());
-            log.info("📤 Отправлено событие на кухню для заказа #{}", event.getOrderId());
+            log.info(" Отправлено событие на кухню для заказа #{}", event.getOrderId());
 
         } else {
             // Оплата не удалась → заказ отменён
             order.setStatus(OrderStatus.CANCELLED.name());
             order.setUpdatedAt(LocalDateTime.now());
             orderRepository.save(order);
-            log.error("❌ Заказ #{} отменён: {}", event.getOrderId(), event.getMessage());
+            log.error(" Заказ #{} отменён: {}", event.getOrderId(), event.getMessage());
         }
     }
 

@@ -45,14 +45,14 @@ public class User implements UserDetails {  /// UserDetails — интерфей
     private LocalDateTime updatedAt;
 
     @PrePersist /// Вызывается ПЕРЕД сохранением НОВОЙ записи в БД
-    /// Автоматически заполнять время создания и изменения
+    /// Автоматически заполняет время создания и изменения
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
     }
 
     @PreUpdate /// Вызывается ПЕРЕД обновлением СУЩЕСТВУЮЩЕЙ записи
-    /// Автоматически заполнять время создания и изменения
+    /// Автоматически заполняет время создания и изменения
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
