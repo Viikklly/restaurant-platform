@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -21,6 +22,7 @@ import java.io.IOException;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "app.security.jwt-filter-enabled", havingValue = "true", matchIfMissing = false)
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     /// OncePerRequestFilter — гарантирует, что фильтр выполнится один раз за запрос
     /// один запрос -> один вызов фильтра

@@ -20,7 +20,7 @@ public class PaymentService {
     // Слушаем топик, куда Order Service отправляет новые заказы
     @KafkaListener(topics = "order.created", groupId = "payment-group")
     public void processPayment(OrderCreatedEvent event) {
-        log.info("💳 Payment Service получил заказ #{} на сумму {} руб.",
+        log.info(" Payment Service получил заказ #{} на сумму {} руб.",
                 event.getOrderId(), event.getTotalAmount());
 
         // Симулируем обработку платежа
@@ -28,14 +28,14 @@ public class PaymentService {
         PaymentProcessedEvent result;
 
         if (event.getTotalAmount().compareTo(BigDecimal.valueOf(10000)) < 0) {
-            log.info("✅ Платёж для заказа #{} УСПЕШЕН", event.getOrderId());
+            log.info(" Платёж для заказа #{} УСПЕШЕН", event.getOrderId());
             result = new PaymentProcessedEvent(
                     event.getOrderId(),
                     "SUCCESS",
                     "Платёж одобрен"
             );
         } else {
-            log.warn("❌ Платёж для заказа #{} ОТКАЗАН (сумма {} >= 10000)",
+            log.warn(" Платёж для заказа #{} ОТКАЗАН (сумма {} >= 10000)",
                     event.getOrderId(), event.getTotalAmount());
             result = new PaymentProcessedEvent(
                     event.getOrderId(),
@@ -46,6 +46,6 @@ public class PaymentService {
 
         // Отправляем результат обратно в Kafka
         kafkaTemplate.send("payment.processed", result);
-        log.info("📤 Результат платежа отправлен в топик 'payment.processed'");
+        log.info(" Результат платежа отправлен в топик 'payment.processed'");
     }
 }
