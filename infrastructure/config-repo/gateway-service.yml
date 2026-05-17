@@ -84,7 +84,9 @@ spring:
           filters:
             # JWT фильтр (проверяет токен и добавляет X-User-Id)
             # Без него любой мог отправить запрос к /api/orders без токена!
-            - name: JwtAuthenticationFilter
+
+            #- name: JwtAuthenticationFilter
+
             # Rate limiting по пользователю
             #- name: RequestRateLimiter
             #  args:
@@ -100,7 +102,7 @@ spring:
                 name: orderService
                 fallbackUri: forward:/fallback/orders
           metadata:
-            description: "Order management (requires JWT)"
+            description: "Order management (auth disabled)"
 
 
 
@@ -110,7 +112,7 @@ spring:
           predicates:
             - Path=/api/kitchen/**
           filters:
-            - name: JwtAuthenticationFilter
+            #- name: JwtAuthenticationFilter
             #- name: RequestRateLimiter
             #  args:
             #    key-resolver: "#{@ipKeyResolver}"
@@ -121,7 +123,7 @@ spring:
                 name: kitchenService
                 fallbackUri: forward:/fallback/kitchen
           metadata:
-            description: "Kitchen management (requires JWT + role)"
+            description: "Kitchen management (auth disabled)"
 
 
 
@@ -132,7 +134,7 @@ spring:
           predicates:
             - Path=/api/payments/**
           filters:
-            - name: JwtAuthenticationFilter
+            #- name: JwtAuthenticationFilter
             #- name: RequestRateLimiter
             #  args:
             #    key-resolver: "#{@userKeyResolver}"
@@ -143,7 +145,7 @@ spring:
                 name: paymentService
                 fallbackUri: forward:/fallback/payments
           metadata:
-            description: "Payment processing (requires JWT)"
+            description: "Payment processing (auth disabled)"
 
 
 
@@ -265,40 +267,3 @@ logging:
     org.springframework.security: DEBUG
 
 
-
-              # [Клиент (Браузер, Мобильное приложение)]
-              #    │
-              #    │ Все запросы идут на один адрес:
-              #    │ http://localhost:8080
-              #    │
-              #    ▼
-              #┌─────────────────────────────────────────────────────┐
-              #│              API GATEWAY :8087                      │
-              #│                                                     │
-              #│  /auth/**           → AUTH-SERVICE (8081)          │
-              #│  /api/orders/**     → ORDER-SERVICE (8082)         │
-              #│  /api/kitchen/**    → KITCHEN-SERVICE (8083)       │
-              #│  /api/payments/**   → PAYMENT-SERVICE (8084)       │
-              #│                                                     │
-              #│   /api/unknown/**  → 404 Not Found                │
-              #└─────────────────────────────────────────────────────┘
-              #    │           │           │           │
-              #    ▼           ▼           ▼           ▼
-            #[Auth]    [Order]    [Kitchen]   [Payment]
-            # :8081      :8082       :8083       :8084
-
-              # Как работает балансировка нагрузки (lb://):
-
-              # Если запущено несколько экземпляров одного сервиса:
-              # Например, ORDER-SERVICE:
-              # - instance-1: localhost:8082
-              # - instance-2: localhost:8083
-              # - instance-3: localhost:8084
-
-              # Gateway автоматически распределяет запросы:
-              # Запрос 1 → ORDER-SERVICE:8082
-              # Запрос 2 → ORDER-SERVICE:8083
-              # Запрос 3 → ORDER-SERVICE:8084
-              # Запрос 4 → ORDER-SERVICE:8082 (снова)
-
-              # Это называется Round Robin (по кругу)

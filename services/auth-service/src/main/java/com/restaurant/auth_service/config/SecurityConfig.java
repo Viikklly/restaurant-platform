@@ -17,17 +17,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 /*
-SecurityConfig — это конфигурация Spring Security, которая определяет:
-Какие URL доступны без токена
-/auth/register, /auth/login — открыты для всех
-Какие URL требуют аутентификации
-Всё остальное — нужно быть залогиненным
-Как проверять пароль
-Как загружать пользователя из БД
-Подключаем наш CustomUserDetailsService
-Как обрабатывать ошибки доступа
-Возвращать 401 вместо страницы логина
-*/
+ * Spring Security: сейчас все запросы permitAll (без проверки JWT в цепочке).
+ *  Включить JWT-фильтр: app.security.jwt-filter-enabled=true и настройка authorizeHttpRequests.
+ */
 
 @Configuration
 @EnableWebSecurity      /// Включает Spring Security для веб-приложения
@@ -61,9 +53,10 @@ public class SecurityConfig {
 //                                "/actuator/info"
 //                        )
                                 /// Всё остальное требует аутентификации
-                        .anyRequest()///  разрешаем все запросы без аутентификации временно, для разработки                        .permitAll()
+                        .anyRequest()///  разрешаем все запросы без аутентификации временно, для разработки
+                                .permitAll()
 
-                        .authenticated()
+                        ///.authenticated()
                 )
 
                 /// Ставим STATELESS (не храним сессии, так как REST API с JWT)

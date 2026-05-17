@@ -24,7 +24,6 @@ public class PaymentService {
                 event.getOrderId(), event.getTotalAmount());
 
         // Симулируем обработку платежа
-        // По ТЗ: если сумма < 10000 руб. - успех, иначе отказ
         PaymentProcessedEvent result;
 
         if (event.getTotalAmount().compareTo(BigDecimal.valueOf(10000)) < 0) {

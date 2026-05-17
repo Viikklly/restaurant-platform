@@ -97,20 +97,4 @@ logging:
 #    - Он только получает сообщения (consumer)
 
 
-# СХЕМА РАБОТЫ
-
-# [Kafka Broker :9092]
-#    │
-#    ├── Топик: order-service.order.created ──┐
-#    ├── Топик: order-service.order.paid ─────┤
-#    ├── Топик: payment-service.payment.success┼──→ [Notification Service]
-#    ├── Топик: kitchen-service.kitchen.ready ─┤    │
-#    └── Топик: ... ───────────────────────────┘    │
-#                                                     ▼
-#                                            Определяет тип уведомления
-#                                                     │
-#                                    ┌────────────────┼────────────────┐
-#                                    ▼                ▼                ▼
-#                              [Email]            [SMS]             [Push]
-#                              user@mail.com    +7 999 123-45-67    Мобильное
-#                                                                   приложение
+                                                              приложение

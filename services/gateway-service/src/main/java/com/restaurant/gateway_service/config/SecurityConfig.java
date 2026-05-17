@@ -3,9 +3,7 @@ package com.restaurant.gateway_service.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.reactive.CorsConfigurationSource;
@@ -24,17 +22,9 @@ public class SecurityConfig {
         return http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)  /// CSRF - Защита от межсайтовой подделки запросов. Отключаем
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))     /// CORS (разрешает запросы с других доменов)
-                .authorizeExchange(exchanges -> exchanges
-                        .pathMatchers(      /// Пути доступные без аутентификации
-                                "/auth/**",      /// Регистрация, логин
-                                "/actuator/**", /// Docker/K8s проверяют жив ли сервис
-                                "/fallback/**", /// Gateway
-                                "/health",      /// Балансировщик нагрузки
-                                "http://localhost:8081/auth/test")
-
-                        .permitAll()
-                        .anyExchange().authenticated()
-                )
+                // Проверку JWT на маршрутах можно включить фильтром JwtAuthenticationFilter и
+                // app.gateway.jwt-filter-enabled=true (см. gateway-service.yml в config-repo).
+                .authorizeExchange(exchanges -> exchanges.anyExchange().permitAll())
                 .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)   /// Логин и пароль в заголовке. Не надо тк используем JWT
                 .formLogin(ServerHttpSecurity.FormLoginSpec::disable)   /// отключаем тк REST API с JWT
                 .build();

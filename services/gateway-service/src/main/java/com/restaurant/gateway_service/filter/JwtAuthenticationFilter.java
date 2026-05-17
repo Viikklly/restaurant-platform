@@ -4,6 +4,7 @@ package com.restaurant.gateway_service.filter;
 import com.restaurant.gateway_service.service.AuthValidationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
 import org.springframework.http.HttpHeaders;
@@ -17,6 +18,7 @@ import java.util.List;
 
 @Component
 @Slf4j
+@ConditionalOnProperty(name = "app.gateway.jwt-filter-enabled", havingValue = "true", matchIfMissing = false)
 public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAuthenticationFilter.Config> {
 
     @Autowired
