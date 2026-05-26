@@ -29,9 +29,11 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
     }
 
 
-    /// JWT валидация в Gateway.
-    /// Gateway применяет этот код к каждому проходящему запросу.
-    /// Этот фильтр - проверяет пропуск у каждого посетителя и записывает его имя перед тем, как пустить внутрь.
+    /**
+     *  JWT валидация в Gateway.
+     *  Gateway применяет этот код к каждому проходящему запросу.
+     *  Этот фильтр - проверяет пропуск у каждого посетителя и записывает его имя перед тем, как пустить внутрь.
+     */
     @Override
     public GatewayFilter apply(Config config) {
         ///  exchange - Объект запроса и ответа (ServerWebExchange)
@@ -99,10 +101,12 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
         };
     }
 
-    /// это фильтр, который решает:
-    ///   Нужно ли проверять JWT токен для этого запроса?
-    ///   Если нужен ответ пользователю ДО того, как у него есть токен: сделать публичным
-    ///   Если запрос модифицирует данные или требует авторизации: требовать токен
+    /**
+     *  Это фильтр, который решает:
+     *  Нужно ли проверять JWT токен для этого запроса?
+     *  Если нужен ответ пользователю ДО того, как у него есть токен: сделать публичным
+     *  Если запрос модифицирует данные или требует авторизации: требовать токен
+     */
     private boolean isPublicEndpoint(String path) {
         return path.startsWith("/auth/") ||
                 path.startsWith("/actuator/") ||
@@ -112,7 +116,9 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
     }
 
 
-    /// Формирует и отправляет красивый JSON ответ об ошибке
+    /**
+     * Формирует и отправляет JSON ответ об ошибке
+     */
     private Mono<Void> onError(ServerWebExchange exchange, String message, HttpStatus status) {
         exchange.getResponse().setStatusCode(status);
         exchange.getResponse().getHeaders().add("Content-Type", "application/json");
@@ -137,8 +143,11 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
     }
 
 
-    /// требование API Spring Cloud Gateway
-    ///  родительский класс AbstractGatewayFilterFactory требует его
+
+    /**
+     * Требование API Spring Cloud Gateway
+     * Родительский класс AbstractGatewayFilterFactory требует его
+     */
     public static class Config {
         // Configuration properties if needed
     }

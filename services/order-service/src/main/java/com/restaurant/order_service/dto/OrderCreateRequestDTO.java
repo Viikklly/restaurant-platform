@@ -7,22 +7,22 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.util.List;
 
+/**
+ * RequestDTO заказа
+ */
 @Data
 public class OrderCreateRequestDTO {
 
+    /**
+     * Идентификатор юзера, который совершает заказ
+     */
     @NotNull(message = "userId не может быть null")
     private Long userId;
 
-    @NotNull(message = "totalAmount не может быть null")
-    @Min(value = 1, message = "Сумма должна быть больше 0")
-    private BigDecimal totalAmount;
+    /**
+     * Список блюд, который хочет заказать юзер
+     */
+    @NotNull(message = "items(заказ) не может быть null")
+    private List<ItemDTO> items;
 
-    private List<OrderItemDto> items;
-
-    @Data
-    public static class OrderItemDto {
-        private String productName;
-        private Integer quantity;
-        private BigDecimal price;
-    }
 }

@@ -15,13 +15,19 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 /// Gateway будет вызывать Auth Service через HTTP, чтобы проверить JWT токен
+
+/**
+ * Конфигурация WebClient для вызова AUTH-SERVICE через Eureka с таймаутами 5 секунд.
+ */
 @Configuration
 public class WebClientConfig {
 
+    /**
+     * Создаёт билдер для WebClient с поддержкой балансировки нагрузки через Eureka.
+     *  Этот метод готовит "фабрику" для создания HTTP клиентов, которые умеют находить другие
+     *  сервисы через Eureka и распределять между ними нагрузку.
+     */
 
-
-    /// Этот метод готовит "фабрику" для создания HTTP клиентов, которые умеют находить другие
-    ///  сервисы через Eureka и распределять между ними нагрузку.
     @Bean
     @LoadBalanced  /// Включает клиентскую балансировку нагрузки. Запрос идет напрямую на localhost:8081
     public WebClient.Builder loadBalancedWebClientBuilder() {
@@ -29,6 +35,12 @@ public class WebClientConfig {
     }
 
 
+    /**
+     * Предоставляет настроенные экземпляры WebClient для вызова микросервисов,
+     * с целью проверки JWT-токенов.
+     * @param builder
+     * @return
+     */
     @Bean
     public WebClient authServiceWebClient(WebClient.Builder builder) {
         /// Настройки таймаутов для WebClient

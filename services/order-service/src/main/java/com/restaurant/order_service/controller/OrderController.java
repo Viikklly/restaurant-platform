@@ -22,14 +22,16 @@ public class OrderController {
 
     @PostMapping
     public ResponseEntity<OrderResponseDTO> createOrder(@Valid @RequestBody OrderCreateRequestDTO request) {
-        log.info("🔵 POST запрос на /api/orders");
+        log.info(" POST запрос на /api/orders");
         OrderResponseDTO response = orderService.createOrder(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+
+
     @GetMapping("/{id}")
     public ResponseEntity<OrderDetailsResponseDTO> getOrder(@PathVariable Long id) {
-        log.info("🔵 GET /api/orders/{}", id);
+        log.info(" GET /api/orders/{}", id);
         OrderDetailsResponseDTO order = orderService.getOrder(id);
         return ResponseEntity.ok(order);
     }

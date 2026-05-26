@@ -12,11 +12,22 @@ import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Класс содержит настройки Spring
+ */
 @Configuration                      /// класс содержит настройки Spring
 @EnableWebFluxSecurity              /// безопасность
 public class SecurityConfig {
 
 
+    /**
+     * Настраивает цепочку фильтров безопасности (Spring Security WebFlux)
+     * Проверка JWT не включена, может быть добавлена отдельным фильтром JwtAuthenticationFilter
+     * при включении свойства app.gateway.jwt-filter-enabled
+     * ТАК КАК ПРОЕКТ УЧЕБНЫЙ И ДЛЯ УПРОЩЕНИЯ РАЗРАБОТКИ
+     * @param http
+     * @return SecurityWebFilterChain
+     */
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         return http
@@ -30,6 +41,17 @@ public class SecurityConfig {
                 .build();
     }
 
+    /**
+     * Создаёт и настраивает источник CORS-конфигурации
+     *
+     *  Разрешённые HTTP методы: GET, POST, PUT, DELETE, PATCH, OPTIONS.<br>
+     *  Разрешённые заголовки запроса: Authorization, Content-Type, X-User-Id, X-User-Email,
+     *  X-User-Role, X-Correlation-Id, X-Request-Source.<br>
+     *  Клиенту (браузеру) доступны для чтения заголовки ответа: X-User-Id, X-Correlation-Id.
+     *
+     *  Конфигурация применяется ко всем путям (/**).
+     * @return CorsConfigurationSource (CORS-настройки, используемые в цепочке безопасности)
+     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();      /// CORS настройки

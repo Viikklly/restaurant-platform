@@ -13,7 +13,7 @@ public class KitchenService {
     // Слушаем топик, куда Order Service отправляет оплаченные заказы
     @KafkaListener(topics = "order.paid", groupId = "kitchen-group")
     public void startCooking(Long orderId) {
-        log.info("👨‍🍳 КУХНЯ: Получен заказ #{} для приготовления", orderId);
+        log.info(" КУХНЯ: Получен заказ #{} для приготовления", orderId);
 
         // Симуляция процесса приготовления
         try {
@@ -22,7 +22,7 @@ public class KitchenService {
             // Имитируем долгую работу (2 секунды)
             Thread.sleep(2000);
 
-            log.info("✅ Заказ #{} ГОТОВ к выдаче!", orderId);
+            log.info("Заказ #{} ГОТОВ к выдаче!", orderId);
 
             // TODO: Отправить событие KitchenOrderReadyEvent в Kafka
             // kafkaTemplate.send("kitchen.order.ready", new KitchenOrderReadyEvent(orderId, ...));

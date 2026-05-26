@@ -6,33 +6,36 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 
+
+/**
+ * Этот сервис слушает события из Kafka и отправляет уведомления пользователям
+ * (в нашем случае(пока что) — логирует их).
+ */
 @Service
 @Slf4j
 public class NotificationService {
 
-    // Слушаем ВСЕ события
-    @KafkaListener(
-            topics = {"order.created", "payment.processed", "order.paid"},
-            groupId = "notification-group"
-    )
-    public void sendNotification(Object event) {
+    /// Слушаем топик с заказами
+    @KafkaListener(topics = "order-service.order.created", groupId = "notification-group")
+    public void handleOrderCreated(OrderCreatedEvent event) {
+        log.info("(NotificationService) УВЕДОМЛЕНИЕ: Заказ #{} создан на сумму {} руб.",
+                event.getOrderId(), event.getTotalAmount());
+    }
 
-        // Определяем тип события и отправляем соответствующее уведомление
-        if (event instanceof OrderCreatedEvent) {
-            OrderCreatedEvent e = (OrderCreatedEvent) event;
-            log.info("📧 УВЕДОМЛЕНИЕ ПОЛЬЗОВАТЕЛЮ #{}: Ваш заказ #{} создан на сумму {} руб.",
-                    e.getUserId(), e.getOrderId(), e.getTotalAmount());
+    /// Слушаем топик с платежами
+    @KafkaListener(topics = "payment-service.payment.success", groupId = "notification-group")
+    public void handlePaymentSuccess(PaymentProcessedEvent event) {
+        log.info("(NotificationService) УВЕДОМЛЕНИЕ: Заказ #{} успешно оплачен!", event.getOrderId());
+    }
 
-        } else if (event instanceof PaymentProcessedEvent) {
-            PaymentProcessedEvent e = (PaymentProcessedEvent) event;
-            String statusText = "SUCCESS".equals(e.getStatus())
-                    ? "✅ успешно оплачен"
-                    : "❌ НЕ ПРОШЁЛ оплату: " + e.getMessage();
-            log.info("📧 УВЕДОМЛЕНИЕ: Заказ #{} {}", e.getOrderId(), statusText);
+    @KafkaListener(topics = "payment-service.payment.failed", groupId = "notification-group")
+    public void handlePaymentFailed(PaymentProcessedEvent event) {
+        log.info("(NotificationService) УВЕДОМЛЕНИЕ: Заказ #{} НЕ ОПЛАЧЕН: {}", event.getOrderId(), event.getMessage());
+    }
 
-        } else if (event instanceof Long) {
-            Long orderId = (Long) event;
-            log.info("📧 УВЕДОМЛЕНИЕ: Заказ #{} передан на кухню и готовится!", orderId);
-        }
+    /// Слушаем топик с кухней
+    @KafkaListener(topics = "order-service.order.paid", groupId = "notification-group")
+    public void handleOrderPaid(Long orderId) {
+        log.info("(NotificationService) УВЕДОМЛЕНИЕ: Заказ #{} передан на кухню и готовится!", orderId);
     }
 }

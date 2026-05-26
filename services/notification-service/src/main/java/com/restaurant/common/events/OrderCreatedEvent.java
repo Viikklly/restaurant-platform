@@ -6,6 +6,9 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 
+/**
+ * Событие созданного заказа
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

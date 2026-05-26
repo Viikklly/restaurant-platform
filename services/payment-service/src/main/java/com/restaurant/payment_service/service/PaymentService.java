@@ -2,6 +2,8 @@ package com.restaurant.payment_service.service;
 
 import com.restaurant.common.events.OrderCreatedEvent;
 import com.restaurant.common.events.PaymentProcessedEvent;
+import com.restaurant.payment_service.entity.PaymentTransaction;
+import com.restaurant.payment_service.repository.PaymentTransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -9,30 +11,40 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
+/**
+ * Сервис платежа
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class PaymentService {
 
+
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final PaymentTransactionRepository paymentTransactionRepository;
 
-    // Слушаем топик, куда Order Service отправляет новые заказы
-    @KafkaListener(topics = "order.created", groupId = "payment-group")
+    /**
+     * Операция оплаты заказа
+     */
+    /// Слушаем топик, куда Order Service отправляет новые заказы (NotificationService)
+    @KafkaListener(topics = "order-service.order.created", groupId = "payment-group")
     public void processPayment(OrderCreatedEvent event) {
-        log.info(" Payment Service получил заказ #{} на сумму {} руб.",
-                event.getOrderId(), event.getTotalAmount());
+        log.info(" PaymentService получил событие для заказа #{}", event.getOrderId());
 
-        // Симулируем обработку платежа
         PaymentProcessedEvent result;
+        String topic;
 
+        /// Сравниваем сумму с лимитом 10000
         if (event.getTotalAmount().compareTo(BigDecimal.valueOf(10000)) < 0) {
-            log.info(" Платёж для заказа #{} УСПЕШЕН", event.getOrderId());
+            log.info("Платёж для заказа #{} УСПЕШЕН", event.getOrderId());
             result = new PaymentProcessedEvent(
                     event.getOrderId(),
                     "SUCCESS",
                     "Платёж одобрен"
             );
+            topic = "payment-service.payment.success";
         } else {
             log.warn(" Платёж для заказа #{} ОТКАЗАН (сумма {} >= 10000)",
                     event.getOrderId(), event.getTotalAmount());
@@ -41,10 +53,24 @@ public class PaymentService {
                     "FAILED",
                     "Сумма превышает лимит 10000 руб."
             );
+            topic = "payment-service.payment.failed";
         }
 
-        // Отправляем результат обратно в Kafka
-        kafkaTemplate.send("payment.processed", result);
-        log.info(" Результат платежа отправлен в топик 'payment.processed'");
+        /// Сохраняем платеж в БД
+        PaymentTransaction transaction = PaymentTransaction.builder()
+                .orderId(event.getOrderId())
+                .userId(event.getUserId())
+                .amount(event.getTotalAmount())
+                .statusPayment(result.getStatusPayment())
+                .message(result.getMessage())
+                .createdAt(LocalDateTime.now())
+                .build();
+        paymentTransactionRepository.save(transaction);
+        log.info("Платеж сохранен в БД");
+
+
+        /// Отправляем в соответствующий топик
+        kafkaTemplate.send(topic, result);
+        log.info(" Результат платежа отправлен в топик '{}'", topic);
     }
 }

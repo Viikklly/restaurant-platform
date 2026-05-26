@@ -14,6 +14,10 @@ import reactor.util.retry.Retry;
 
 import java.time.Duration;
 
+
+/**
+ * HTTP-клиент для валидации JWT-токенов через вызов AUTH-SERVICE.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -23,6 +27,13 @@ public class TokenValidationClient {
 
     private static final String VALIDATE_TOKEN_PATH = "/auth/validate";
 
+    /**
+     * Отправляет запрос на валидацию JWT-токена в AUTH-SERVICE.
+     * Выполняет валидацию JWT-токенов с автоматическими повторными попытками
+     * при временных сбоях (503, ConnectException) — до 3 попыток с задержкой 500 мс.
+     * @param token
+     * @return
+     */
     public Mono<AuthResponse> validateToken(String token) {
         log.debug("Validating token with auth-service"); /// Лог, что начали валидацию токена
 

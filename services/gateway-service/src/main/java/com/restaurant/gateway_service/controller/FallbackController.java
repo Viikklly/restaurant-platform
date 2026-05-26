@@ -10,7 +10,10 @@ import java.util.Map;
 
 import static reactor.netty.http.HttpConnectionLiveness.log;
 
-/// FallbackController - это контроллер, который возвращает ответы когда основной сервис не доступен.
+/**
+ * FallbackController - это контроллер, который возвращает ответы когда основной сервис не доступен.
+ */
+
 public class FallbackController {
 
 
@@ -34,7 +37,9 @@ public class FallbackController {
         return createFallbackResponse("Notification service is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE);
     }
 
-    /// Fallback для Auth Service
+    /**
+     * Fallback для Auth Service
+     */
     @GetMapping("/auth")
     public ResponseEntity<Map<String, Object>> authFallback() {
         log.warn("Auth service fallback triggered");
