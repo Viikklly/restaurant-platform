@@ -17,7 +17,7 @@ spring:
       default_schema: kitchen_schema
   
   kafka:
-    bootstrap-servers: kafka:9092
+    bootstrap-servers: kafka:29092
     consumer:
       group-id: kitchen-group
 
@@ -26,4 +26,4 @@ app:
     topics:
       order-created: order-service.order.created         # Топик "заказ создан"
       order-paid: order-service.order.paid               # Топик "заказ оплачен"
-      kitchen-order-ready: kitchen-service.kitchen.order.ready
+      kitchen-order-ready: kitchen-service.order.ready

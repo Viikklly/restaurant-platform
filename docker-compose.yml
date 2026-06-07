@@ -94,22 +94,16 @@ services:
   # ------------ // ------------
   # REDIS (КЭШ)
   # Используется как: кэш, брокер сообщений, база данных для временных данных
+  # REDIS (КЭШ)
   redis:
-    image: redis:7 # версия 7
-    ports:
-      - "6379:6379" # Redis доступен на localhost:6379 для приложений на хосте
+    image: redis:7-alpine
     container_name: restaurant-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
     networks:
       - restaurant-network
-       # restaurant-network — это изолированный виртуальный коммутатор.
-      # restaurant-network — это НЕ название сервиса, а название СЕТИ
-      # или обобщенное название, которое включает все наши сервисы
-      #
-      # restaurant-network — это как локальная сеть внутри ресторана:
-      # Кухня (kitchen-service) может общаться со складом (postgres-kitchen)
-      # Официант (gateway-service) принимает заказы от клиентов
-      # Кассир (payment-service) общается с банком (через Kafka)
-      # Все это внутри одной сети ресторана, но изолировано от соседних магазинов
     command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -118,25 +112,25 @@ services:
       retries: 5
 
   # KAFKA (БРОКЕР СООБЩЕНИЙ)
-  zookeeper:
-    image: confluentinc/cp-zookeeper:latest
-    container_name: restaurant-zookeeper
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    ports:
-      - "2181:2181"
-    networks:
-      - restaurant-network
-    healthcheck:
-      test: [ "CMD", "nc", "-z", "localhost", "2181" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  #zookeeper:
+  #  image: confluentinc/cp-zookeeper:latest
+  #  container_name: restaurant-zookeeper
+  #  environment:
+  #    ZOOKEEPER_CLIENT_PORT: 2181
+  #    ZOOKEEPER_TICK_TIME: 2000
+  #  ports:
+  #    - "2181:2181"
+  #  networks:
+  #    - restaurant-network
+  #  healthcheck:
+  #    test: [ "CMD", "nc", "-z", "localhost", "2181" ]
+  #    interval: 10s
+  #    timeout: 5s
+  #    retries: 5
 
 
   kafka:
-    image: confluentinc/cp-kafka:latest  # latest — последняя версия с поддержкой KRaft
+    image: confluentinc/cp-kafka:7.4.0  # latest — последняя версия с поддержкой KRaft
     container_name: restaurant-kafka
     ports:
       - "9092:9092"  # Для подключения с хоста
@@ -271,11 +265,11 @@ services:
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
     networks:
       - restaurant-network
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8761/actuator/health" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+    #healthcheck:
+     # test: [ "CMD", "curl", "-f", "http://localhost:8761/actuator/health" ]
+     # interval: 10s
+     # timeout: 5s
+     # retries: 10
 
   # ------------ // ------------
   # CONFIG SERVICE (SPRING CLOUD CONFIG)
@@ -299,11 +293,11 @@ services:
       - ./infrastructure/config-repo:/config-repo
     networks:
       - restaurant-network
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8888/actuator/health" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+    #healthcheck:
+      #test: [ "CMD", "curl", "-f", "http://localhost:8888/actuator/health" ]
+      #interval: 10s
+      #timeout: 5s
+      #retries: 10
 
   # ------------ // ------------
   # API GATEWAY
@@ -312,7 +306,7 @@ services:
     build: ./services/gateway-service
     # Docker строит образ из исходников в папке ./services/gateway-service
     ports:
-      - "8080:8080"
+      - "8090:8090"
     env_file:
       - ./.env
     depends_on:
@@ -351,16 +345,31 @@ services:
     networks:
       - restaurant-network
     depends_on:
-      discovery-service:
-        condition: service_healthy
-      config-service:
-        condition: service_healthy
-      postgres-auth:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+    - discovery-service
+    - config-service
+    - postgres-auth
+    - kafka
+    - redis
+
+
+  # ------------ // ------------
+  # NOTIFICATION SERVICE
+  notification-service:
+    build: ./services/notification-service
+    container_name: restaurant-notification-service
+    ports:
+      - "8086:8086"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_CLOUD_CONFIG_URI: http://config-service:8888
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+    networks:
+      - restaurant-network
+    depends_on:
+      - discovery-service
+      - config-service
+      - kafka
+
 
   # ------------ // ------------
   # ORDER SERVICE
@@ -385,16 +394,12 @@ services:
     networks:
       - restaurant-network
     depends_on:
-      discovery-service:
-        condition: service_healthy
-      config-service:
-        condition: service_healthy
-      postgres-order:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - discovery-service
+      - config-service
+      - postgres-order
+      - kafka
+      - redis
+
 
   # ------------ // ------------
   # KITCHEN SERVICE
@@ -413,16 +418,11 @@ services:
     networks:
       - restaurant-network
     depends_on:
-      discovery-service:
-        condition: service_healthy
-      config-service:
-        condition: service_healthy
-      postgres-kitchen:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - discovery-service
+      - config-service
+      - postgres-kitchen
+      - kafka
+      - redis
 
   # ------------ // ------------
   # PAYMENT SERVICE
@@ -441,16 +441,11 @@ services:
     networks:
       - restaurant-network
     depends_on:
-      discovery-service:
-        condition: service_healthy
-      config-service:
-        condition: service_healthy
-      postgres-payment:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - discovery-service
+      - config-service
+      - postgres-payment
+      - kafka
+      - redis
 
 
 # СЕТИ

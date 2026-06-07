@@ -2,11 +2,12 @@ server:
   port: 8090
 
 spring:
-  application:
-    name: gateway-service
-  main:
-    web-application-type: reactive
+  config:
+    activate:
+      on-profile: dev
   cloud:
+    config:
+      enabled: false
     gateway:
       server:
         webflux:
@@ -44,37 +45,4 @@ spring:
 
 eureka:
   client:
-    service-url:
-      defaultZone: http://discovery-service:8761/eureka/
-    fetch-registry: true
-    register-with-eureka: true
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,gateway,routes
-      base-path: /actuator
-  endpoint:
-    gateway:
-      access: read_only
-
-logging:
-  level:
-    com.restaurant.gateway_service: DEBUG
-    org.springframework.cloud.gateway: INFO
-
-resilience4j:
-  circuitbreaker:
-    configs:
-      default:
-        registerHealthIndicator: true
-        slidingWindowSize: 10
-        minimumNumberOfCalls: 5
-        permittedNumberOfCallsInHalfOpenState: 3
-        automaticTransitionFromOpenToHalfOpenEnabled: true
-        waitDurationInOpenState: 5s
-        failureRateThreshold: 50
-    instances:
-      authService:
-        baseConfig: default
+    enabled: false

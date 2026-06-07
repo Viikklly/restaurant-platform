@@ -1,7 +1,7 @@
 server:
   # Порт, на котором будет запущен Notification Service
   # Этот сервис ОТПРАВЛЯЕТ уведомления (email, SMS, push)
-  port: 8085
+  port: 8086
 
 spring:
   application:

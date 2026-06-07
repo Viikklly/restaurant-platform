@@ -1,10 +1,12 @@
 package com.restaurant.order_service.entity;
 
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
+import lombok.Builder.Default;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -56,12 +58,14 @@ public class Item {
      * Доступно ли блюдо для заказа
      */
     @Column(name = "is_available")
-    @Builder.Default
+    @Default
     private Boolean isAvailable = true;
 
     /**
      * Связь с таблицей OrderItems
      */
     @OneToMany(mappedBy = "item")
+    @JsonIgnore ///  Что бы убрать ошибку LazyInitializationException (так как это обратная связь:какие заказы содержат это блюдо и Пользователь не должен видеть чужие заказы)
+    @Default
     private List<OrderItem> orderItems = new ArrayList<>();
 }

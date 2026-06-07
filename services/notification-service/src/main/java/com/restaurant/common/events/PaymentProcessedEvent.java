@@ -11,7 +11,19 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class PaymentProcessedEvent {
+
+    /**
+     * ID заказа
+     */
     private Long orderId;
-    private String status;  // "SUCCESS" или "FAILED"
+
+    /**
+     * Статус: "SUCCESS" или "FAILED"
+     */
+    private String status;
+
+    /**
+     * Сообщение
+     */
     private String message;
 }

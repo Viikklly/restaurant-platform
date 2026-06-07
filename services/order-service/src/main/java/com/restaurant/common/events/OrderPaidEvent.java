@@ -7,19 +7,20 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 
 /**
- * Событие созданного заказа
+ * Событие оплаченного заказа
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class OrderCreatedEvent {
+public class OrderPaidEvent {
+
     /**
-     * ID заказа
+     * ID заказа, который оплачен
      */
     private Long orderId;
 
     /**
-     * ID юзера
+     * ID пользователя, сделавшего заказ
      */
     private Long userId;
 
@@ -27,9 +28,4 @@ public class OrderCreatedEvent {
      * Сумма заказа
      */
     private BigDecimal totalAmount;
-
-    /**
-     * Текущий статус (PENDING)
-     */
-    private String status;
 }

@@ -14,12 +14,12 @@ spring:
   
   jpa:
     hibernate:
-      ddl-auto: create
+      ddl-auto: update
     database-platform: org.hibernate.dialect.PostgreSQLDialect
   
   # ИНДИВИДУАЛЬНЫЕ KAFKA НАСТРОЙКИ
   kafka:
-    bootstrap-servers: kafka:9092
+    bootstrap-servers: kafka:29092
     consumer:
       group-id: order-group   # Группа для балансировки нагрузки
 

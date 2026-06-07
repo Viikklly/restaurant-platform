@@ -4,7 +4,7 @@
 # ОСОБЕННОСТЬ: ТОЛЬКО ПОЛУЧАЕТ сообщения из Kafka, НИЧЕГО НЕ ОТПРАВЛЯЕТ
 
 server:
-  port: 8085
+  port: 8086
 
 
 
@@ -16,7 +16,7 @@ spring:
 
   # KAFKA (ТОЛЬКО CONSUMER)
   kafka:
-    bootstrap-servers: kafka:9092
+    bootstrap-servers: kafka:29092
     consumer:
       # group-id: идентификатор группы потребителей
       group-id: notification-group

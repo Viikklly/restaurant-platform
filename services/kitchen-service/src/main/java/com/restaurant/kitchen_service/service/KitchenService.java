@@ -1,35 +1,138 @@
 package com.restaurant.kitchen_service.service;
 
+import com.restaurant.common.events.KitchenOrderReadyEvent;
+import com.restaurant.common.events.OrderPaidEvent;
+import com.restaurant.kitchen_service.entity.Ticket;
+import com.restaurant.kitchen_service.enums.TicketStatusEnum;
+import com.restaurant.kitchen_service.repository.TicketRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class KitchenService {
 
-    // Слушаем топик, куда Order Service отправляет оплаченные заказы
-    @KafkaListener(topics = "order.paid", groupId = "kitchen-group")
+    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final TicketRepository ticketRepository;
+
+    @Value("${kitchen.cooking-time-ms:5000}")
+    private long cookingTimeMs;
+
+    /**
+     *  Получаем оплаченный заказ от Order Service
+     * Топик: order-service.order.paid
+     */
+    @KafkaListener(topics = "order-service.order.paid", groupId = "kitchen-group")
+    public void acceptOrder(OrderPaidEvent event) {
+        log.info("КУХНЯ: Получен оплаченный заказ #{}", event.getOrderId());
+
+        /// Создаём тикет со статусом OPEN
+        Ticket ticket = Ticket.builder()
+                .orderId(event.getOrderId())
+                .status(TicketStatusEnum.OPEN)
+                .build();
+
+        ticketRepository.save(ticket);
+        log.info("Создан тикет для заказа #{}, статус: {}", ticket.getOrderId(), ticket.getStatus());
+
+
+        /// Отправляем событие, что кухня начала готовить (для статуса PREPARING)
+        kafkaTemplate.send("kitchen-service.cooking.started", event.getOrderId());
+        log.info("Отправлено событие 'kitchen-service.cooking.started' для заказа #{}", event.getOrderId());
+
+
+        /// Имитируем готовку
+        startCooking(event.getOrderId());
+    }
+
+    /**
+     *  Начинаем готовку (OPEN → IN_PROGRESS)
+     */
+    @Transactional
     public void startCooking(Long orderId) {
-        log.info(" КУХНЯ: Получен заказ #{} для приготовления", orderId);
+        Ticket ticket = ticketRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new RuntimeException("Тикет не найден для заказа: " + orderId));
 
-        // Симуляция процесса приготовления
-        try {
-            log.info("🍳 Начинаем готовить заказ #{}...", orderId);
+        ticket.setStatus(TicketStatusEnum.IN_PROGRESS);
 
-            // Имитируем долгую работу (2 секунды)
-            Thread.sleep(2000);
+        ticketRepository.save(ticket);
+        log.info("Заказ #{}: статус {} - начали готовить", orderId, ticket.getStatus());
 
-            log.info("Заказ #{} ГОТОВ к выдаче!", orderId);
+        /// Запускаем процесс готовки в отдельном потоке
+        completeCookingAfterDelay(orderId);
+    }
 
-            // TODO: Отправить событие KitchenOrderReadyEvent в Kafka
-            // kafkaTemplate.send("kitchen.order.ready", new KitchenOrderReadyEvent(orderId, ...));
+    /**
+     *  Завершаем готовку с задержкой
+     */
+    private void completeCookingAfterDelay(Long orderId) {
+        new Thread(() -> {
+            try {
+                log.info("Заказ #{}: готовка... ({} мс)", orderId, cookingTimeMs);
+                Thread.sleep(cookingTimeMs);
+                completeCooking(orderId);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.error("Готовка прервана для заказа #{}", orderId);
+            }
+        }).start();
+    }
 
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("❌ Приготовление заказа #{} прервано", orderId);
+    /**
+     * Завершаем готовку (IN_PROGRESS → READY) и отправляем событие
+     */
+    @Transactional
+    public void completeCooking(Long orderId) {
+        Ticket ticket = ticketRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new RuntimeException("Тикет не найден для заказа: " + orderId));
+
+        ticket.setStatus(TicketStatusEnum.READY);
+
+        ticketRepository.save(ticket);
+
+        log.info(" Заказ #{}: статус {} - готов к выдаче!", orderId, ticket.getStatus());
+
+        /// ОТПРАВЛЯЕМ СОБЫТИЕ В KAFKA
+        KitchenOrderReadyEvent event = new KitchenOrderReadyEvent(
+                orderId,
+                "ticket-" + orderId,
+                "READY"
+        );
+        kafkaTemplate.send("kitchen-service.order.ready", event);
+        log.info("Отправлено событие KitchenOrderReadyEvent в топик 'kitchen-service.order.ready'");
+    }
+
+    /**
+     *  Отмена заказа
+     */
+    @KafkaListener(topics = "order-service.order.cancelled", groupId = "kitchen-group")
+    @Transactional
+    public void cancelOrder(Long orderId) {
+        log.info(" КУХНЯ: Получена отмена заказа #{}", orderId);
+
+        Ticket ticket = ticketRepository.findByOrderId(orderId).orElse(null);
+        if (ticket == null) {
+            log.warn("Тикет для заказа #{} не найден", orderId);
+            return;
         }
+
+        if (ticket.getStatus() == TicketStatusEnum.READY) {
+            log.warn("Заказ #{} уже готов, отмена невозможна", orderId);
+            return;
+        }
+
+        ticket.setStatus(TicketStatusEnum.CANCELLED);
+
+        ticketRepository.save(ticket);
+
+        log.info("Заказ #{}: статус {} - отменён", orderId, ticket.getStatus());
     }
 }

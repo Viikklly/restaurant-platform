@@ -9,7 +9,10 @@ server:
 spring:
   application:
     name: auth-service        # Имя в Eureka (другие сервисы ищут по этому имени)
-  
+  main:
+    web-application-type: servlet
+
+
   # БД
   datasource:
     # URL подключения к PostgreSQL
@@ -35,6 +38,3 @@ eureka:
   instance:
     prefer-ip-address: true
   
-  # Веб-тип приложения
-  main:
-    web-application-type: servlet

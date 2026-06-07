@@ -69,7 +69,7 @@ public class AuthService {
      * Логин пользователя
      */
     public LoginResponseDTO login(LoginRequestDTO request) {
-        log.info("Login attempt for email: {}", request.getEmail());
+        log.info("Login999999 attempt for email: {}", request.getEmail());
 
         /// Аутентифицируем пользователя
         Authentication authentication = authenticationManager.authenticate( /// authenticationManager.authenticate()	Запускает процесс проверки
@@ -79,11 +79,15 @@ public class AuthService {
                 )
         );
 
+        log.info("Login attempt for email11111111111111111: {}", request.getEmail());
+
         /// Получаем пользователя
         UserDetails userDetails = (UserDetails) authentication.getPrincipal();
 
+        log.info("Login attempt for email22222222222222: {}", request.getEmail());
         /// Генерируем токены
         String accessToken = jwtService.generateToken(userDetails);
+        log.info("Login attempt for email33333333333333333: {}", request.getEmail());
         String refreshToken = jwtService.generateRefreshToken(userDetails);
 
         log.info("User logged in successfully: {}", request.getEmail());

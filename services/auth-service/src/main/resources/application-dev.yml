@@ -1,0 +1,93 @@
+# ПРОФИЛЬ DEV - для локальной разработки с Docker-инфраструктурой
+# SPRING_PROFILES_ACTIVE=dev
+
+server:
+  port: 8081
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+    use-legacy-processing: false    # Отключаем bootstrap
+
+
+  # Отключаем Config Server для локальной разработки
+  cloud:
+    config:
+      enabled: false
+
+
+
+
+
+  # ОТКЛЮЧАЕМ LIQUIBASE
+  liquibase:
+    enabled: false
+
+  # Подключение к PostgreSQL (БД в Docker)
+  datasource:
+    url: jdbc:postgresql://localhost:5437/authdb
+    #url: jdbc:postgresql://localhost:5432/authdb?user=postgres&password=postgres&sslmode=disable
+    username: postgres
+    password: postgres
+    #password: user
+    driver-class-name: org.postgresql.Driver
+
+  # JPA настройки
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  # Kafka (брокер сообщений в Docker)
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: auth-service
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+  # Redis (кэш в Docker)
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+
+# JWT настройки
+jwt:
+  secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+  expiration: 900000
+  refresh-expiration: 604800000
+
+# Включаем JWT фильтр (опционально, пока закомментирован в SecurityConfig)
+app:
+  security:
+    jwt-filter-enabled: false
+
+# Отключаем Eureka для локальной разработки
+eureka:
+  client:
+    enabled: false
+
+# Логирование
+logging:
+  level:
+    com.restaurant.auth_service: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.kafka: DEBUG

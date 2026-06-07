@@ -6,6 +6,7 @@ import com.restaurant.payment_service.entity.PaymentTransaction;
 import com.restaurant.payment_service.repository.PaymentTransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
@@ -25,10 +26,13 @@ public class PaymentService {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final PaymentTransactionRepository paymentTransactionRepository;
 
+
+    @Value("${payment.max-amount:10000}")
+    private BigDecimal maxAmount;
+
     /**
      * Операция оплаты заказа
      */
-    /// Слушаем топик, куда Order Service отправляет новые заказы (NotificationService)
     @KafkaListener(topics = "order-service.order.created", groupId = "payment-group")
     public void processPayment(OrderCreatedEvent event) {
         log.info(" PaymentService получил событие для заказа #{}", event.getOrderId());
@@ -37,7 +41,7 @@ public class PaymentService {
         String topic;
 
         /// Сравниваем сумму с лимитом 10000
-        if (event.getTotalAmount().compareTo(BigDecimal.valueOf(10000)) < 0) {
+        if (event.getTotalAmount().compareTo(maxAmount) < 0) {
             log.info("Платёж для заказа #{} УСПЕШЕН", event.getOrderId());
             result = new PaymentProcessedEvent(
                     event.getOrderId(),
@@ -63,7 +67,6 @@ public class PaymentService {
                 .amount(event.getTotalAmount())
                 .statusPayment(result.getStatusPayment())
                 .message(result.getMessage())
-                .createdAt(LocalDateTime.now())
                 .build();
         paymentTransactionRepository.save(transaction);
         log.info("Платеж сохранен в БД");

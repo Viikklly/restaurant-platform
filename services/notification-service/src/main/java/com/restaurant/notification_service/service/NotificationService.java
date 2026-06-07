@@ -1,5 +1,6 @@
 package com.restaurant.notification_service.service;
 
+import com.restaurant.common.events.KitchenOrderReadyEvent;
 import com.restaurant.common.events.OrderCreatedEvent;
 import com.restaurant.common.events.PaymentProcessedEvent;
 import lombok.extern.slf4j.Slf4j;
@@ -37,5 +38,12 @@ public class NotificationService {
     @KafkaListener(topics = "order-service.order.paid", groupId = "notification-group")
     public void handleOrderPaid(Long orderId) {
         log.info("(NotificationService) УВЕДОМЛЕНИЕ: Заказ #{} передан на кухню и готовится!", orderId);
+    }
+
+    /// Слушаем топик с готовыми заказами от кухни
+    @KafkaListener(topics = "kitchen-service.order.ready", groupId = "notification-group")
+    public void handleOrderReady(KitchenOrderReadyEvent event) {
+        log.info("(NotificationService) УВЕДОМЛЕНИЕ: Заказ #{} ГОТОВ к выдаче.",
+                event.getOrderId());
     }
 }

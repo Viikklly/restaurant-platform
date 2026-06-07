@@ -14,6 +14,8 @@ public class LoginResponseDTO {
 
     private String accessToken;
     private String refreshToken;
+
+    @Builder.Default ///  @Builder использовал значения по умолчанию
     private String tokenType = "Bearer";  // Тип токена (по умолчанию Bearer)
 
 

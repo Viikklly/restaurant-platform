@@ -9,7 +9,7 @@ spring:
 
   # В Docker сети обращаемся к контейнеру по его имени
   kafka:
-    bootstrap-servers: kafka:9092        # Контейнер с именем "kafka"
+    bootstrap-servers: kafka:29092        # Контейнер с именем "kafka"
 
   data:
     redis:

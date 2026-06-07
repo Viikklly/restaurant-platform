@@ -5,10 +5,12 @@ spring:
     name: order-service # Имя сервиса
   cloud:
     config:
-      uri: http://config-service:8888
+      uri: http://localhost:8888 # это для разработки
+      # uri: http://config-service:8888
       fail-fast: false
   config:
-    import: optional:configserver:http://config-service:8888
+    # Импортируем конфигурацию с Config Server
+    import: optional:configserver:${spring.cloud.config.uri}
 
 
 

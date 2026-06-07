@@ -1,6 +1,7 @@
 package com.restaurant.order_service.service;
 
 import com.restaurant.common.events.OrderCreatedEvent;
+import com.restaurant.common.events.OrderPaidEvent;
 import com.restaurant.common.events.PaymentProcessedEvent;
 import com.restaurant.order_service.dto.ItemDTO;
 import com.restaurant.order_service.dto.OrderCreateRequestDTO;
@@ -45,7 +46,7 @@ public class OrderService {
         log.info("Начало создания заказа для userId: {}", request.getUserId());
 
 
-        ///  Создаём заказ в БД
+        ///  Создаём заказ
         Order order = new Order();
 
         order.setUserId(request.getUserId());
@@ -58,7 +59,7 @@ public class OrderService {
         Order savedOrder = orderRepository.save(order);
         log.info(" Заказ сохранён с ID: {}", savedOrder.getId());
 
-        /// Создаём связи OrderItem (используя существующие Item из БД)
+        /// Создаём связи OrderItem (используя Item из БД)
         List<OrderItem> orderItems = createOrderItems(savedOrder, request.getItems());
         savedOrder.setOrderItems(orderItems);
 
@@ -102,12 +103,20 @@ public class OrderService {
 
         /// Меняем статус: PENDING → PAID
         order.setStatus(OrderStatus.PAID.name());
-        order.setUpdatedAt(LocalDateTime.now());
+
         orderRepository.save(order);
         log.info("Заказ #{}: статус изменён на {}", order.getId(), order.getStatus());
 
         /// Отправляем событие на кухню
-        kafkaTemplate.send("order-service.order.paid", event.getOrderId());
+        /// Отправляем OrderPaidEvent
+        OrderPaidEvent paidEvent = new OrderPaidEvent(
+                order.getId(),
+                order.getUserId(),
+                order.getTotalAmount()
+        );
+
+        kafkaTemplate.send("order-service.order.paid", paidEvent);
+
         log.info(" Отправлено событие на кухню для заказа #{}", event.getOrderId());
     }
 
@@ -125,10 +134,71 @@ public class OrderService {
 
         /// Меняем статус: PENDING → CANCELLED
         order.setStatus(OrderStatus.CANCELLED.name());
-        order.setUpdatedAt(LocalDateTime.now());
+
         orderRepository.save(order);
         log.info(" Заказ #{}: статус изменён на {}", order.getId(), order.getStatus());
     }
+
+
+
+
+    /**
+     * КУХНЯ НАЧАЛА ГОТОВКУ
+     * Статус: PAID → PREPARING
+     */
+    @KafkaListener(topics = "kitchen-service.cooking.started", groupId = "order-group")
+    @Transactional
+    public void handleCookingStarted(Long orderId) {
+        log.info(" Кухня начала готовить заказ #{}", orderId);
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Заказ не найден: " + orderId));
+
+        order.setStatus(OrderStatus.PREPARING.name());
+
+        orderRepository.save(order);
+        log.info(" Заказ #{}: статус изменён на {}", order.getId(), order.getStatus());
+    }
+
+    /**
+     * ЗАКАЗ ГОТОВ
+     * Статус: PREPARING → READY
+     */
+    @KafkaListener(topics = "kitchen-service.order.ready", groupId = "order-group")
+    @Transactional
+    public void handleOrderReady(Long orderId) {
+        log.info("Заказ #{} готов к выдаче!", orderId);
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Заказ не найден: " + orderId));
+
+        order.setStatus(OrderStatus.READY.name());
+
+        orderRepository.save(order);
+        log.info(" Заказ #{}: статус изменён на {}", order.getId(), order.getStatus());
+    }
+
+    /**
+     * ЗАКАЗ ДОСТАВЛЕН
+     * Статус: READY → DELIVERED
+     */
+    @KafkaListener(topics = "delivery-service.order.delivered", groupId = "order-group")
+    @Transactional
+    public void handleOrderDelivered(Long orderId) {
+        log.info(" Заказ #{} доставлен клиенту!", orderId);
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new RuntimeException("Заказ не найден: " + orderId));
+
+        order.setStatus(OrderStatus.DELIVERED.name());
+        order.setUpdatedAt(LocalDateTime.now());
+        orderRepository.save(order);
+        log.info("Заказ #{}: статус изменён на {}", order.getId(), order.getStatus());
+    }
+
+
+
+
 
     /**
      * Получает сущность Order из БД
@@ -176,7 +246,7 @@ public class OrderService {
 
             Item item = itemMap.get(itemDTO.getProductName());
             if (item == null) {
-                throw new RuntimeException("Блюдо не найдено: " + itemDTO.getProductName());
+                throw new RuntimeException("Блюдо не найдено в меню: " + itemDTO.getProductName());
             }
 
             BigDecimal itemCost = item.getItemPrice()

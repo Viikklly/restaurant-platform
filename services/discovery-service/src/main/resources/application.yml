@@ -5,7 +5,8 @@ server:
 # Настройки Eureka сервера
 eureka:
   instance:
-    hostname: localhost  # Имя хоста для регистрации
+    hostname: discovery-service  # Имя хоста для регистрации
+    prefer-ip-address: true
   client:
     register-with-eureka: false  # Не регистрировать себя в Eureka
     fetch-registry: false        # Не скачивать реестр с других серверов

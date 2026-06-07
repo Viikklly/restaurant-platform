@@ -4,32 +4,26 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
-
 /**
- * Событие созданного заказа
+ * Событие, которое отправляет Kitchen Service когда заказ готов
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class OrderCreatedEvent {
+public class KitchenOrderReadyEvent {
+
     /**
      * ID заказа
      */
     private Long orderId;
 
     /**
-     * ID юзера
+     * ID тикета на кухне (кухонный чек)
      */
-    private Long userId;
+    private String ticketId;
 
     /**
-     * Сумма заказа
-     */
-    private BigDecimal totalAmount;
-
-    /**
-     * Текущий статус (PENDING)
+     * Статус: "READY", "COOKING"
      */
     private String status;
 }

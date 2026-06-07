@@ -4,7 +4,7 @@
 
 
 server:
-  port: 8080
+  port: 8090
   # Порт, на котором будет запущен API Gateway
   # Это ЕДИНАЯ ТОЧКА ВХОДА для всех клиентов
 
@@ -262,7 +262,7 @@ eureka:
 # Logging
 logging:
   level:
-    com.restaurant.gateway: DEBUG
+    com.restaurant.gateway_service: DEBUG
     org.springframework.cloud.gateway: INFO
     org.springframework.security: DEBUG
 
