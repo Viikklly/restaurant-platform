@@ -14,6 +14,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -134,5 +136,76 @@ public class KitchenService {
         ticketRepository.save(ticket);
 
         log.info("Заказ #{}: статус {} - отменён", orderId, ticket.getStatus());
+    }
+
+
+
+
+
+    /**
+     * Получить все тикеты
+     */
+    @Transactional(readOnly = true)
+    public List<Ticket> getAllTickets() {
+        log.info("Получение всех тикетов");
+        return ticketRepository.findAll();
+    }
+
+    /**
+     * Получить тикет по ID заказа
+     */
+    @Transactional(readOnly = true)
+    public Ticket getTicketByOrderId(Long orderId) {
+        log.info("Получение тикета по заказу: {}", orderId);
+        return ticketRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new RuntimeException("Тикет не найден для заказа: " + orderId));
+    }
+
+    /**
+     * Получить тикет по ID
+     */
+    @Transactional(readOnly = true)
+    public Ticket getTicketById(Long id) {
+        log.info("Получение тикета по ID: {}", id);
+        return ticketRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Тикет не найден: " + id));
+    }
+
+    /**
+     * Получить тикеты по статусу
+     */
+    @Transactional(readOnly = true)
+    public List<Ticket> getTicketsByStatus(TicketStatusEnum status) {
+        log.info("Получение тикетов по статусу: {}", status);
+        return ticketRepository.findAll().stream()
+                .filter(ticket -> ticket.getStatus() == status)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Получить открытые тикеты (OPEN)
+     */
+    @Transactional(readOnly = true)
+    public List<Ticket> getOpenTickets() {
+        log.info("Получение открытых тикетов");
+        return getTicketsByStatus(TicketStatusEnum.OPEN);
+    }
+
+    /**
+     * Получить тикеты в работе (IN_PROGRESS)
+     */
+    @Transactional(readOnly = true)
+    public List<Ticket> getInProgressTickets() {
+        log.info("Получение тикетов в работе");
+        return getTicketsByStatus(TicketStatusEnum.IN_PROGRESS);
+    }
+
+    /**
+     * Получить готовые тикеты (READY)
+     */
+    @Transactional(readOnly = true)
+    public List<Ticket> getReadyTickets() {
+        log.info("Получение готовых тикетов");
+        return getTicketsByStatus(TicketStatusEnum.READY);
     }
 }

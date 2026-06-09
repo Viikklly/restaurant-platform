@@ -4,6 +4,7 @@ import com.restaurant.common.events.OrderCreatedEvent;
 import com.restaurant.common.events.PaymentProcessedEvent;
 import com.restaurant.payment_service.entity.PaymentTransaction;
 import com.restaurant.payment_service.repository.PaymentTransactionRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Сервис платежа
@@ -61,6 +63,19 @@ public class PaymentService {
         }
 
         /// Сохраняем платеж в БД
+        saveTransaction(event, result);
+        log.info("Платеж сохранен в БД");
+
+
+        /// Отправляем в соответствующий топик
+        kafkaTemplate.send(topic, result);
+        log.info(" Результат платежа отправлен в топик '{}'", topic);
+    }
+
+
+
+    @Transactional
+    public void saveTransaction(OrderCreatedEvent event, PaymentProcessedEvent result) {
         PaymentTransaction transaction = PaymentTransaction.builder()
                 .orderId(event.getOrderId())
                 .userId(event.getUserId())
@@ -69,11 +84,27 @@ public class PaymentService {
                 .message(result.getMessage())
                 .build();
         paymentTransactionRepository.save(transaction);
-        log.info("Платеж сохранен в БД");
+    }
 
 
-        /// Отправляем в соответствующий топик
-        kafkaTemplate.send(topic, result);
-        log.info(" Результат платежа отправлен в топик '{}'", topic);
+    public List<PaymentTransaction> getAllTransactions() {
+        log.info(" Получение всех транзакций");
+        return paymentTransactionRepository.findAll();
+    }
+
+    public PaymentTransaction getTransactionById(Long id) {
+        log.info(" Получение транзакции по ID: {}", id);
+        return paymentTransactionRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Транзакция не найдена: " + id));
+    }
+
+    public List<PaymentTransaction> getTransactionsByOrderId(Long orderId) {
+        log.info(" Получение транзакций по заказу: {}", orderId);
+        return paymentTransactionRepository.findByOrderId(orderId);
+    }
+
+    public List<PaymentTransaction> getTransactionsByUserId(Long userId) {
+        log.info(" Получение транзакций по пользователю: {}", userId);
+        return paymentTransactionRepository.findByUserId(userId);
     }
 }

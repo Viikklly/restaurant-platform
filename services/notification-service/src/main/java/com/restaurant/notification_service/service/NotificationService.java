@@ -2,6 +2,7 @@ package com.restaurant.notification_service.service;
 
 import com.restaurant.common.events.KitchenOrderReadyEvent;
 import com.restaurant.common.events.OrderCreatedEvent;
+import com.restaurant.common.events.OrderPaidEvent;
 import com.restaurant.common.events.PaymentProcessedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -10,7 +11,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * Этот сервис слушает события из Kafka и отправляет уведомления пользователям
- * (в нашем случае(пока что) — логирует их).
+ * (в нашем случае — логирует их).
  */
 @Service
 @Slf4j
@@ -20,8 +21,9 @@ public class NotificationService {
     * Слушаем топик, что стартует приготовления блюда
      */
     @KafkaListener(topics = "kitchen-service.cooking.started", groupId = "notification-group")
-    public void handleCookingStarted(OrderCreatedEvent event) {
-        log.info("(NotificationService) УВЕДОМЛЕНИЕ: Заказ #{} начали готовить! Скоро будет готов.", event.getOrderId());
+    public void handleCookingStarted(Long orderId) {
+        log.info("(NotificationService) УВЕДОМЛЕНИЕ: Заказ #{} начали готовить! Скоро будет готов.",
+                orderId);
     }
 
     /**
@@ -53,8 +55,9 @@ public class NotificationService {
     * Слушаем топик с кухней
      */
     @KafkaListener(topics = "order-service.order.paid", groupId = "notification-group")
-    public void handleOrderPaid(Long orderId) {
-        log.info("(NotificationService) УВЕДОМЛЕНИЕ: Заказ #{} передан на кухню и готовится!", orderId);
+    public void handleOrderPaid(OrderPaidEvent event) {
+        log.info("(NotificationService) УВЕДОМЛЕНИЕ: Заказ #{} передан на кухню и готовится!",
+                event.getOrderId());
     }
 
     /**
@@ -62,7 +65,7 @@ public class NotificationService {
      */
     @KafkaListener(topics = "kitchen-service.order.ready", groupId = "notification-group")
     public void handleOrderReady(KitchenOrderReadyEvent event) {
-        log.info("(NotificationService) УВЕДОМЛЕНИЕ: Заказ #{} ГОТОВ к выдаче.",
+        log.info("(NotificationService) УВЕДОМЛЕНИЕ: Заказ #{} ГОТОВ к выдаче! Приятного аппетита!",
                 event.getOrderId());
     }
 }

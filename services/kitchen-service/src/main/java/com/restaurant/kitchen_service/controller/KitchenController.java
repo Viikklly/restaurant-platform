@@ -2,14 +2,14 @@ package com.restaurant.kitchen_service.controller;
 
 import com.restaurant.kitchen_service.entity.Ticket;
 import com.restaurant.kitchen_service.enums.TicketStatusEnum;
-import com.restaurant.kitchen_service.repository.TicketRepository;
+import com.restaurant.kitchen_service.service.KitchenService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.stream.Collectors;
+
 
 @RestController
 @RequestMapping("/api/kitchen")
@@ -17,28 +17,71 @@ import java.util.stream.Collectors;
 @Slf4j
 public class KitchenController {
 
-    private final TicketRepository ticketRepository;
+    private final KitchenService kitchenService;
 
+    /**
+     * Получить все тикеты
+     */
     @GetMapping("/tickets")
     public ResponseEntity<List<Ticket>> getAllTickets() {
         log.info("GET /api/kitchen/tickets");
-        return ResponseEntity.ok(ticketRepository.findAll());
+        return ResponseEntity.ok(kitchenService.getAllTickets());
     }
 
+    /**
+     * Получить тикет по ID
+     */
+    @GetMapping("/tickets/{id}")
+    public ResponseEntity<Ticket> getTicketById(@PathVariable Long id) {
+        log.info("GET /api/kitchen/tickets/{}", id);
+        return ResponseEntity.ok(kitchenService.getTicketById(id));
+    }
+
+
+    /**
+     * Получить тикет по ID заказа
+     */
     @GetMapping("/tickets/order/{orderId}")
     public ResponseEntity<Ticket> getTicketByOrderId(@PathVariable Long orderId) {
         log.info("GET /api/kitchen/tickets/order/{}", orderId);
-        Ticket ticket = ticketRepository.findByOrderId(orderId)
-                .orElseThrow(() -> new RuntimeException("Тикет не найден: " + orderId));
-        return ResponseEntity.ok(ticket);
+        return ResponseEntity.ok(kitchenService.getTicketByOrderId(orderId));
     }
 
+    /**
+     * Получить тикеты по статусу
+     */
     @GetMapping("/tickets/status/{status}")
     public ResponseEntity<List<Ticket>> getTicketsByStatus(@PathVariable String status) {
+        log.info("GET /api/kitchen/tickets/status/{}", status);
         TicketStatusEnum statusEnum = TicketStatusEnum.valueOf(status.toUpperCase());
-        List<Ticket> tickets = ticketRepository.findAll().stream()
-                .filter(t -> t.getStatus() == statusEnum)
-                .collect(Collectors.toList());
-        return ResponseEntity.ok(tickets);
+        return ResponseEntity.ok(kitchenService.getTicketsByStatus(statusEnum));
+    }
+
+
+    /**
+     * Получить все открытые тикеты
+     */
+    @GetMapping("/tickets/status/open")
+    public ResponseEntity<List<Ticket>> getOpenTickets() {
+        log.info("GET /api/kitchen/tickets/status/open");
+        return ResponseEntity.ok(kitchenService.getOpenTickets());
+    }
+
+    /**
+     * Получить тикеты в работе
+     */
+    @GetMapping("/tickets/status/in-progress")
+    public ResponseEntity<List<Ticket>> getInProgressTickets() {
+        log.info("GET /api/kitchen/tickets/status/in-progress");
+        return ResponseEntity.ok(kitchenService.getInProgressTickets());
+    }
+
+    /**
+     * Получить готовые тикеты
+     */
+    @GetMapping("/tickets/status/ready")
+    public ResponseEntity<List<Ticket>> getReadyTickets() {
+        log.info("GET /api/kitchen/tickets/status/ready");
+        return ResponseEntity.ok(kitchenService.getReadyTickets());
     }
 }
