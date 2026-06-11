@@ -10,5 +10,5 @@ import lombok.NoArgsConstructor;
 public class PaymentProcessedEvent {
     private Long orderId;
     private String status;  // "SUCCESS" или "FAILED"
-    private String message;
+    private String message;  // сообщение об ошибке (опционально)
 }

@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Событие, которое отправляет Order Service после успешной оплаты
@@ -14,19 +15,8 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 public class OrderPaidEvent {
-
-    /**
-     * ID заказа, который оплачен
-     */
     private Long orderId;
-
-    /**
-     * ID пользователя, сделавшего заказ
-     */
     private Long userId;
-
-    /**
-     * Сумма заказа
-     */
+    private List<String> orderItemsList;  // для кухни
     private BigDecimal totalAmount;
 }

@@ -84,4 +84,13 @@ public class KitchenController {
         log.info("GET /api/kitchen/tickets/status/ready");
         return ResponseEntity.ok(kitchenService.getReadyTickets());
     }
+
+    /**
+     * Получить список блюд по ID заказа
+     */
+    @GetMapping("/tickets/order/items/{orderId}")
+    public ResponseEntity<List<String>> getItemsListForTicketId(@PathVariable Long orderId) {
+        log.info("GET /api/kitchen/tickets/order/items/{}", orderId);
+        return ResponseEntity.ok(kitchenService.getItemsListForTicketId(orderId));
+    }
 }

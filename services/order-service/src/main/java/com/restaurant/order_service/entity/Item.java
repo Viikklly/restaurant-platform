@@ -61,11 +61,12 @@ public class Item {
     @Default
     private Boolean isAvailable = true;
 
-    /**
+/*    *//**
      * Связь с таблицей OrderItems
-     */
+     *//*
     @OneToMany(mappedBy = "item")
     @JsonIgnore ///  Что бы убрать ошибку LazyInitializationException (так как это обратная связь:какие заказы содержат это блюдо и Пользователь не должен видеть чужие заказы)
     @Default
     private List<OrderItem> orderItems = new ArrayList<>();
+    */
 }

@@ -11,19 +11,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class KitchenOrderReadyEvent {
-
-    /**
-     * ID заказа
-     */
     private Long orderId;
-
-    /**
-     * ID тикета на кухне (кухонный чек)
-     */
     private String ticketId;
-
-    /**
-     * Статус: "READY", "COOKING"
-     */
-    private String status;
+    private String status;  // "READY", "COOKING"
 }

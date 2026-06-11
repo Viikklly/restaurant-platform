@@ -80,29 +80,44 @@ public class PaymentService {
                 .orderId(event.getOrderId())
                 .userId(event.getUserId())
                 .amount(event.getTotalAmount())
-                .statusPayment(result.getStatusPayment())
+                .statusPayment(result.getStatus())
                 .message(result.getMessage())
                 .build();
         paymentTransactionRepository.save(transaction);
     }
 
-
+    /**
+     * Получить все транзакции (для отладки)
+     */
+    @Transactional
     public List<PaymentTransaction> getAllTransactions() {
         log.info(" Получение всех транзакций");
         return paymentTransactionRepository.findAll();
     }
 
+    /**
+     * Получить транзакцию по ID
+     */
+    @Transactional
     public PaymentTransaction getTransactionById(Long id) {
         log.info(" Получение транзакции по ID: {}", id);
         return paymentTransactionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Транзакция не найдена: " + id));
     }
 
+    /**
+     * Получить все транзакции по ID заказа
+     */
+    @Transactional
     public List<PaymentTransaction> getTransactionsByOrderId(Long orderId) {
         log.info(" Получение транзакций по заказу: {}", orderId);
         return paymentTransactionRepository.findByOrderId(orderId);
     }
 
+    /**
+     * Получить все транзакции по ID пользователя
+     */
+    @Transactional
     public List<PaymentTransaction> getTransactionsByUserId(Long userId) {
         log.info(" Получение транзакций по пользователю: {}", userId);
         return paymentTransactionRepository.findByUserId(userId);

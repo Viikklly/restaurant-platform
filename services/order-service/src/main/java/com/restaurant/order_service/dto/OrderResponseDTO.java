@@ -7,6 +7,8 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 
 @Data
 @AllArgsConstructor
@@ -14,6 +16,7 @@ import java.time.LocalDateTime;
 public class OrderResponseDTO {
     private Long id;
     private String status;
+    private List<String> itemsList;
     private BigDecimal totalAmount;
     private LocalDateTime createdAt;
 }

@@ -13,7 +13,6 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -29,7 +28,7 @@ public class KitchenService {
     private long cookingTimeMs;
 
     /**
-     *  Получаем оплаченный заказ от Order Service
+     * Получаем оплаченный заказ от Order Service
      * Топик: order-service.order.paid
      */
     @KafkaListener(topics = "order-service.order.paid", groupId = "kitchen-group")
@@ -39,6 +38,7 @@ public class KitchenService {
         /// Создаём тикет со статусом OPEN
         Ticket ticket = Ticket.builder()
                 .orderId(event.getOrderId())
+                .items(event.getOrderItemsList())
                 .status(TicketStatusEnum.OPEN)
                 .build();
 
@@ -106,6 +106,7 @@ public class KitchenService {
         KitchenOrderReadyEvent event = new KitchenOrderReadyEvent(
                 orderId,
                 "ticket-" + orderId,
+                ticket.getItems(),
                 "READY"
         );
         kafkaTemplate.send("kitchen-service.order.ready", event);
@@ -208,4 +209,16 @@ public class KitchenService {
         log.info("Получение готовых тикетов");
         return getTicketsByStatus(TicketStatusEnum.READY);
     }
+
+    /**
+     * Получить список блюд тикета
+     */
+        public List<String> getItemsListForTicketId(Long ticketId) {
+        log.info("Получение готовых тикетов");
+            Ticket ticketById = ticketRepository.findById(ticketId)
+                    .orElseThrow(() -> new RuntimeException("Тикет не найден: " + ticketId));
+            return ticketById.getItems();
+    }
+
+
 }

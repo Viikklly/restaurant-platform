@@ -4,11 +4,13 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class PaymentProcessedEvent {
     private Long orderId;
-    private String statusPayment;  // "SUCCESS" или "FAILED"
-    private String message;
+    private String status;  // "SUCCESS" или "FAILED"
+    private String message;  // сообщение об ошибке (опционально)
 }

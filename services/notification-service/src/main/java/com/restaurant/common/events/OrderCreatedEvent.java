@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Событие созданного заказа
@@ -13,23 +14,9 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 public class OrderCreatedEvent {
-    /**
-     * ID заказа
-     */
     private Long orderId;
-
-    /**
-     * ID юзера
-     */
     private Long userId;
-
-    /**
-     * Сумма заказа
-     */
+    private List<String> orderItemsList;  // список блюд для кухни
     private BigDecimal totalAmount;
-
-    /**
-     * Текущий статус (PENDING)
-     */
-    private String status;
+    private String status;  // PENDING
 }

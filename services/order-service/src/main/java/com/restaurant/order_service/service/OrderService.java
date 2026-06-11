@@ -12,6 +12,7 @@ import com.restaurant.order_service.entity.Order;
 import com.restaurant.order_service.entity.OrderItem;
 import com.restaurant.order_service.entity.OrderStatus;
 import com.restaurant.order_service.repository.ItemRepository;
+import com.restaurant.order_service.repository.OrderItemRepository;
 import com.restaurant.order_service.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,12 +23,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +34,7 @@ import java.util.stream.Collectors;
 public class OrderService {
 
     private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final ItemRepository itemRepository;
 
@@ -51,7 +51,7 @@ public class OrderService {
 
         order.setUserId(request.getUserId());
         order.setStatus(OrderStatus.PENDING.name());
-        /// Добавляем расчитанную соимость
+        /// Добавляем расчитанную стоимость
         order.setTotalAmount(calculateDishCost(request.getItems()));
 
 
@@ -61,12 +61,17 @@ public class OrderService {
 
         /// Создаём связи OrderItem (используя Item из БД)
         List<OrderItem> orderItems = createOrderItems(savedOrder, request.getItems());
-        savedOrder.setOrderItems(orderItems);
+        orderItemRepository.saveAll(orderItems);
+        ///savedOrder.setOrderItems(orderItems);
+
+        /// Формируем список блюд для кухни
+        List<String> kitchenItemsList = getItemsListForKitchen(request.getItems());
 
         /// Отправляем событие в Kafka (заказ создан)
         OrderCreatedEvent event = new OrderCreatedEvent(
                 savedOrder.getId(),
                 savedOrder.getUserId(),
+                kitchenItemsList,
                 savedOrder.getTotalAmount(),
                 savedOrder.getStatus()
         );
@@ -76,6 +81,7 @@ public class OrderService {
         return new OrderResponseDTO(
                 savedOrder.getId(),
                 savedOrder.getStatus(),
+                kitchenItemsList,
                 savedOrder.getTotalAmount(),
                 savedOrder.getCreatedAt()
         );
@@ -87,7 +93,7 @@ public class OrderService {
 
 
 
-    /// *** Kafka ///
+    /// Kafka ///
 
     /**
      * ОБРАБОТКА УСПЕШНОЙ ОПЛАТЫ
@@ -107,11 +113,15 @@ public class OrderService {
         orderRepository.save(order);
         log.info("Заказ #{}: статус изменён на {}", order.getId(), order.getStatus());
 
-        /// Отправляем событие на кухню
+        /// Лист заказов для кухни
+        List<String> orderItemsList = getOrderItemsList(order.getId());
+
+        /// Отправляем событие на кухню.
         /// Отправляем OrderPaidEvent
         OrderPaidEvent paidEvent = new OrderPaidEvent(
                 order.getId(),
                 order.getUserId(),
+                orderItemsList,
                 order.getTotalAmount()
         );
 
@@ -208,6 +218,7 @@ public class OrderService {
                 .orElseThrow(() -> new RuntimeException("Заказ не найден: " + id));
     }
 
+
     /**
      * Получает OrderDetailsResponseDTO
      */
@@ -229,31 +240,20 @@ public class OrderService {
     /**
      * Рассчитывает стоимость заказа
      */
-    public BigDecimal calculateDishCost(List<ItemDTO> items){
+    public BigDecimal calculateDishCost(List<ItemDTO> items) {
         if (items == null || items.isEmpty()) {
             return BigDecimal.ZERO;
         }
-        BigDecimal totalAmount = BigDecimal.ZERO;
 
-        /// Загружаем из БД
-        Map<String, Item> itemMap = getItemMapFromDTOs(items);
+        /// Получаем Map: название блюда -> цена из БД
+        Map<String, BigDecimal> prices = getPricesFromDB(items);
 
-        /// Расчет стоимости
-        for (ItemDTO itemDTO : items) {
-            if (itemDTO.getProductName() == null || itemDTO.getQuantity() == null) {
-                continue;
-            }
-
-            Item item = itemMap.get(itemDTO.getProductName());
-            if (item == null) {
-                throw new RuntimeException("Блюдо не найдено в меню: " + itemDTO.getProductName());
-            }
-
-            BigDecimal itemCost = item.getItemPrice()
-                    .multiply(BigDecimal.valueOf(itemDTO.getQuantity()));
-            totalAmount = totalAmount.add(itemCost);
-        }
-        return totalAmount;
+        /// Суммируем: цена * количество
+        return items.stream()
+                .filter(dto -> dto.getProductName() != null && dto.getQuantity() != null)
+                .map(dto -> prices.get(dto.getProductName())
+                        .multiply(BigDecimal.valueOf(dto.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
 
@@ -262,6 +262,7 @@ public class OrderService {
 
     /**
      * Создаёт связи OrderItem между заказом и существующими блюдами из БД (не создаёт новые блюда!)
+     * Каждый OrderItem = одна единица блюда
      */
     private List<OrderItem> createOrderItems(Order order, List<ItemDTO> items) {
         if (items == null || items.isEmpty()) {
@@ -269,29 +270,31 @@ public class OrderService {
         }
 
 
-        /// Достаём существующие блюда из БД (один запрос)
-        Map<String, Item> itemMap = getItemMapFromDTOs(items);
+        /// Получаем Map блюд из БД (ключ = название блюда)
+        Map<String, Item> itemMap = fetchItemMap(items);
 
         /// Создаём связи (не создаём новые Item!)
         List<OrderItem> orderItems = new ArrayList<>();
 
         for (ItemDTO itemDTO : items) {
+            /// Пропускаем некорректные DTO
             if (itemDTO.getProductName() == null || itemDTO.getQuantity() == null) {
                 continue;
             }
 
-            /// Находим существующее блюдо из БД
-            Item existingItem = itemMap.get(itemDTO.getProductName());
-            if (existingItem == null) {
-                throw new RuntimeException("Блюдо не найдено в меню: " + itemDTO.getProductName());
+            /// Находим блюдо в БД
+            Item item = itemMap.get(itemDTO.getProductName());
+            if (item == null) {
+                throw new RuntimeException("Блюдо не найдено: " + itemDTO.getProductName());
             }
 
-            /// Создаём связь (OrderItem - это просто связующая таблица)
-            OrderItem orderItem = new OrderItem();
-            orderItem.setOrder(order);                    /// Какой заказ
-            orderItem.setItem(existingItem);              /// Какое блюдо (из БД)
-
-            orderItems.add(orderItem);
+            /// Создаём связь для каждой единицы (quantity раз)
+            for (int i = 0; i < itemDTO.getQuantity(); i++) {
+                OrderItem orderItem = new OrderItem();
+                orderItem.setOrder(order);
+                orderItem.setItem(item);
+                orderItems.add(orderItem);
+            }
         }
 
         return orderItems;
@@ -299,21 +302,44 @@ public class OrderService {
 
 
 
-
     /**
-     * Получает Map блюд из БД по списку ItemDTO
+     * Загружает цены блюд из БД
      */
-    private Map<String, Item> getItemMapFromDTOs(List<ItemDTO> items) {
-        if (items == null || items.isEmpty()) {
+    private Map<String, BigDecimal> getPricesFromDB(List<ItemDTO> items) {
+        List<String> names = items.stream()
+                .map(ItemDTO::getProductName)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (names.isEmpty()) {
             return Map.of();
         }
 
-        List<String> productNames = extractProductNames(items);
+        return itemRepository.findAllByItemNameIn(names).stream()
+                .collect(Collectors.toMap(Item::getItemName, Item::getItemPrice));
+    }
 
-        return itemRepository.findAllByItemNameIn(productNames)
-                .stream()
+    /**
+     * Загружает блюда из БД и возвращает Map (название -> Item)
+     */
+    private Map<String, Item> fetchItemMap(List<ItemDTO> items) {
+        /// Извлекаем уникальные названия блюд
+        List<String> productNames = items.stream()
+                .map(ItemDTO::getProductName)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (productNames.isEmpty()) {
+            return Map.of();
+        }
+
+        /// Один запрос в БД
+        return itemRepository.findAllByItemNameIn(productNames).stream()
                 .collect(Collectors.toMap(Item::getItemName, Function.identity()));
     }
+
 
     /**
      * Извлекает названия блюд из списка ItemDTO
@@ -323,6 +349,41 @@ public class OrderService {
                 .map(ItemDTO::getProductName)
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    /**
+     * Для кухни: список блюд, где каждое блюдо повторяется quantity раз
+     * Пример: [Пицца, Пицца, Паста] - значит готовить 2 пиццы и 1 пасту
+     */
+    private List<String> getItemsListForKitchen(List<ItemDTO> items) {
+        if (items == null || items.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return items.stream()
+                .filter(item -> item != null && item.getQuantity() != null && item.getQuantity() > 0)
+                .flatMap(item -> IntStream.range(0, item.getQuantity())
+                        .mapToObj(i -> item.getProductName()))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Получает список блюд для заказа по Order ID
+     */
+    public List<String> getOrderItemsList(Long orderId) {
+        Order order = getOrderEntity(orderId);
+
+        /// Получаем все OrderItem для заказа
+        List<OrderItem> orderItems = orderItemRepository.findByOrderId(orderId);
+
+        if (orderItems == null || orderItems.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        /// Преобразуем в список названий блюд
+        return orderItems.stream()
+                .map(orderItem -> orderItem.getItem().getItemName())
+                .collect(Collectors.toList());
     }
 
 }
