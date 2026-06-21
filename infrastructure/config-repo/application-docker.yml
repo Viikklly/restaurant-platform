@@ -13,7 +13,9 @@ spring:
 
   data:
     redis:
-      host: redis                         # Контейнер с именем "redis"
+      host: redis              # Контейнер с именем "redis"
+      port: 6379
+      database: ${REDIS_DATABASE:0}
 
 # Eureka тоже в Docker контейнере
 eureka:

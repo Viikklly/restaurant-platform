@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -23,6 +24,8 @@ public class KitchenService {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final TicketRepository ticketRepository;
+
+    private final KitchenRedisService redisService; /// REDIS
 
     @Value("${kitchen.cooking-time-ms:5000}")
     private long cookingTimeMs;
@@ -42,9 +45,11 @@ public class KitchenService {
                 .status(TicketStatusEnum.OPEN)
                 .build();
 
-        ticketRepository.save(ticket);
+        Ticket savedTicket = ticketRepository.save(ticket);
         log.info("Создан тикет для заказа #{}, статус: {}", ticket.getOrderId(), ticket.getStatus());
 
+        /// Сохраняем в REDIS
+        redisService.cacheTicket(event.getOrderId(), savedTicket);
 
         /// Отправляем событие, что кухня начала готовить (для статуса PREPARING)
         kafkaTemplate.send("kitchen-service.cooking.started", event.getOrderId());
@@ -65,8 +70,12 @@ public class KitchenService {
 
         ticket.setStatus(TicketStatusEnum.IN_PROGRESS);
 
-        ticketRepository.save(ticket);
+        Ticket updatedTicket = ticketRepository.save(ticket);
+
         log.info("Заказ #{}: статус {} - начали готовить", orderId, ticket.getStatus());
+
+        /// Обновляем в REDIS
+        redisService.cacheTicket(orderId, updatedTicket);
 
         /// Запускаем процесс готовки в отдельном потоке
         completeCookingAfterDelay(orderId);
@@ -98,7 +107,11 @@ public class KitchenService {
 
         ticket.setStatus(TicketStatusEnum.READY);
 
-        ticketRepository.save(ticket);
+        Ticket updatedTicket = ticketRepository.save(ticket);
+
+
+        /// Обновляем в REDIS
+        redisService.cacheTicket(orderId, updatedTicket);
 
         log.info(" Заказ #{}: статус {} - готов к выдаче!", orderId, ticket.getStatus());
 
@@ -134,6 +147,9 @@ public class KitchenService {
 
         ticket.setStatus(TicketStatusEnum.CANCELLED);
 
+        /// Удаляем из REDIS
+        redisService.evictTicket(orderId);
+
         ticketRepository.save(ticket);
 
         log.info("Заказ #{}: статус {} - отменён", orderId, ticket.getStatus());
@@ -158,8 +174,27 @@ public class KitchenService {
     @Transactional(readOnly = true)
     public Ticket getTicketByOrderId(Long orderId) {
         log.info("Получение тикета по заказу: {}", orderId);
-        return ticketRepository.findByOrderId(orderId)
+
+        /// Сначала проверяем REDIS
+        Optional<Object> cachedTicket = redisService.getCachedTicket(orderId);
+        if (cachedTicket.isPresent()) {
+            try {
+                return (Ticket) cachedTicket.get();
+            } catch (ClassCastException e) {
+                log.error("Ошибка приведения типа для orderId: {}", orderId, e);
+                redisService.evictTicket(orderId);          /// Очищаем битые данные
+            }
+        }
+
+        /// Если нет в REDIS - идём в БД
+        log.info("Тикет для заказа #{} не найден в Redis, загружаем из БД", orderId);
+        Ticket ticket = ticketRepository.findByOrderId(orderId)
                 .orElseThrow(() -> new RuntimeException("Тикет не найден для заказа: " + orderId));
+
+        /// Сохраняем в REDIS
+        redisService.cacheTicket(orderId, ticket);
+
+        return ticket;
     }
 
     /**

@@ -28,6 +28,8 @@ public class PaymentService {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final PaymentTransactionRepository paymentTransactionRepository;
 
+    private final RedisService redisService;  /// Redis
+
 
     @Value("${payment.max-amount:10000}")
     private BigDecimal maxAmount;
@@ -37,7 +39,7 @@ public class PaymentService {
      */
     @KafkaListener(topics = "order-service.order.created", groupId = "payment-group")
     public void processPayment(OrderCreatedEvent event) {
-        log.info(" PaymentService получил событие для заказа #{}", event.getOrderId());
+        log.info("PaymentService получил событие для заказа #{}", event.getOrderId());
 
         PaymentProcessedEvent result;
         String topic;
@@ -52,7 +54,7 @@ public class PaymentService {
             );
             topic = "payment-service.payment.success";
         } else {
-            log.warn(" Платёж для заказа #{} ОТКАЗАН (сумма {} >= 10000)",
+            log.warn("Платёж для заказа #{} ОТКАЗАН (сумма {} >= 10000)",
                     event.getOrderId(), event.getTotalAmount());
             result = new PaymentProcessedEvent(
                     event.getOrderId(),
@@ -63,27 +65,39 @@ public class PaymentService {
         }
 
         /// Сохраняем платеж в БД
-        saveTransaction(event, result);
-        log.info("Платеж сохранен в БД");
+        PaymentTransaction transaction = saveTransaction(event, result);
 
+        /// Сохраняем в Redis кэш
+        cacheTransaction(transaction);
+
+        /// Очищаем кэши списков (так как появилась новая транзакция)
+        clearListCaches(event.getUserId(), event.getOrderId());
 
         /// Отправляем в соответствующий топик
         kafkaTemplate.send(topic, result);
-        log.info(" Результат платежа отправлен в топик '{}'", topic);
+        log.info("Результат платежа отправлен в топик '{}'", topic);
     }
 
 
 
+    /**
+     * Сохранить транзакцию в БД
+     */
     @Transactional
-    public void saveTransaction(OrderCreatedEvent event, PaymentProcessedEvent result) {
+    public PaymentTransaction saveTransaction(OrderCreatedEvent event, PaymentProcessedEvent result) {
         PaymentTransaction transaction = PaymentTransaction.builder()
                 .orderId(event.getOrderId())
                 .userId(event.getUserId())
                 .amount(event.getTotalAmount())
                 .statusPayment(result.getStatus())
                 .message(result.getMessage())
+                .createdAt(LocalDateTime.now())
                 .build();
-        paymentTransactionRepository.save(transaction);
+
+        PaymentTransaction saved = paymentTransactionRepository.save(transaction);
+        log.info("Платеж сохранен в БД с ID: {}", saved.getId());
+
+        return saved;
     }
 
     /**
@@ -91,8 +105,24 @@ public class PaymentService {
      */
     @Transactional
     public List<PaymentTransaction> getAllTransactions() {
-        log.info(" Получение всех транзакций");
-        return paymentTransactionRepository.findAll();
+        String cacheKey = "payments:all";
+
+        /// Пробуем взять из кэша
+        List<PaymentTransaction> cached = redisService.get(cacheKey, List.class);
+        if (cached != null) {
+            log.info("Получен список всех транзакций из кэша ({} записей)", cached.size());
+            return cached;
+        }
+
+        /// Нет в кэше - берем из БД
+        log.info("Загрузка всех транзакций из БД");
+        List<PaymentTransaction> transactions = paymentTransactionRepository.findAll();
+
+        /// Сохраняем в кэш на 2 мин
+        redisService.saveWithExpire(cacheKey, transactions, 120);
+        log.info("Список всех транзакций сохранен в кэш ({} записей)", transactions.size());
+
+        return transactions;
     }
 
     /**
@@ -100,9 +130,24 @@ public class PaymentService {
      */
     @Transactional
     public PaymentTransaction getTransactionById(Long id) {
-        log.info(" Получение транзакции по ID: {}", id);
-        return paymentTransactionRepository.findById(id)
+        String cacheKey = "payment:" + id;
+
+        /// Пробуем взять из кэша
+        PaymentTransaction cached = redisService.get(cacheKey, PaymentTransaction.class);
+        if (cached != null) {
+            log.info("Транзакция #{} получена из кэша", id);
+            return cached;
+        }
+
+        /// Нет в кэше - берем из БД
+        log.info("Загрузка транзакции #{} из БД", id);
+        PaymentTransaction transaction = paymentTransactionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Транзакция не найдена: " + id));
+
+        /// Сохраняем в кэш на 2 мин
+        redisService.saveWithExpire(cacheKey, transaction, 120);
+        log.info("Транзакция #{} сохранена в кэш", id);
+        return transaction;
     }
 
     /**
@@ -110,8 +155,24 @@ public class PaymentService {
      */
     @Transactional
     public List<PaymentTransaction> getTransactionsByOrderId(Long orderId) {
-        log.info(" Получение транзакций по заказу: {}", orderId);
-        return paymentTransactionRepository.findByOrderId(orderId);
+        String cacheKey = "payments:order:" + orderId;
+
+        /// Пробуем взять из кэша
+        List<PaymentTransaction> cached = redisService.get(cacheKey, List.class);
+        if (cached != null) {
+            log.info("Транзакции заказа #{} получены из кэша ({} записей)", orderId, cached.size());
+            return cached;
+        }
+
+        /// Нет в кэше - берем из БД
+        log.info("Загрузка транзакций заказа #{} из БД", orderId);
+        List<PaymentTransaction> transactions = paymentTransactionRepository.findByOrderId(orderId);
+
+        /// Сохраняем в кэш на 2 мин
+        redisService.saveWithExpire(cacheKey, transactions, 120);
+        log.info("Транзакции заказа #{} сохранены в кэш ({} записей)", orderId, transactions.size());
+
+        return transactions;
     }
 
     /**
@@ -119,7 +180,47 @@ public class PaymentService {
      */
     @Transactional
     public List<PaymentTransaction> getTransactionsByUserId(Long userId) {
-        log.info(" Получение транзакций по пользователю: {}", userId);
-        return paymentTransactionRepository.findByUserId(userId);
+        String cacheKey = "payments:user:" + userId;
+
+        /// Пробуем взять из кэша
+        List<PaymentTransaction> cached = redisService.get(cacheKey, List.class);
+        if (cached != null) {
+            log.info("Транзакции пользователя #{} получены из кэша ({} записей)", userId, cached.size());
+            return cached;
+        }
+
+        /// Нет в кэше - берем из БД
+        log.info("Загрузка транзакций пользователя #{} из БД", userId);
+        List<PaymentTransaction> transactions = paymentTransactionRepository.findByUserId(userId);
+
+        /// Сохраняем в кэш на 2 мин
+        redisService.saveWithExpire(cacheKey, transactions, 120);
+        log.info("Транзакции пользователя #{} сохранены в кэш ({} записей)", userId, transactions.size());
+        return transactions;
+    }
+
+    /**
+     * Кэширование отдельной транзакции
+     */
+    private void cacheTransaction(PaymentTransaction transaction) {
+        String cacheKey = "payment:" + transaction.getId();
+        redisService.saveWithExpire(cacheKey, transaction, 300);
+        log.info("Транзакция #{} сохранена в кэш", transaction.getId());
+    }
+
+    /**
+     * Очистка кэшей списков при добавлении новой транзакции
+     */
+    private void clearListCaches(Long userId, Long orderId) {
+        /// Очищаем общий список
+        redisService.delete("payments:all");
+
+        /// Очищаем список по пользователю
+        redisService.delete("payments:user:" + userId);
+
+        /// Очищаем список по заказу
+        redisService.delete("payments:order:" + orderId);
+
+        log.info("Очищены кэши списков для user#{}, order#{}", userId, orderId);
     }
 }

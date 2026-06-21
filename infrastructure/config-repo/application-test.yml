@@ -33,6 +33,7 @@ spring:
     redis:
       host: localhost
       port: 63790
+      database: 0
 
 # Отключаем Eureka для тестов (не нужна)
 eureka:

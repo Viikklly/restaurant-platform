@@ -53,6 +53,7 @@ spring:
     redis:
       host: localhost                    # Redis на локальной машине
       port: 6379
+      database: 0
 
 
 # Server port

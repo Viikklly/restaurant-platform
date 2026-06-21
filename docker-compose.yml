@@ -342,6 +342,10 @@ services:
       SPRING_MAIN_WEB_APPLICATION_TYPE: servlet
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
       EUREKA_CLIENT_ENABLED: true
+      #redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DATABASE: 4
     networks:
       - restaurant-network
     depends_on:
@@ -363,12 +367,17 @@ services:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_CLOUD_CONFIG_URI: http://config-service:8888
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+      #redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DATABASE: 3
     networks:
       - restaurant-network
     depends_on:
       - discovery-service
       - config-service
       - kafka
+      - redis
 
 
   # ------------ // ------------
@@ -391,6 +400,11 @@ services:
       SPRING_MAIN_WEB_APPLICATION_TYPE: servlet
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
       EUREKA_CLIENT_ENABLED: true
+      #redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DATABASE: 5
+
     networks:
       - restaurant-network
     depends_on:
@@ -415,6 +429,11 @@ services:
       SPRING_CLOUD_CONFIG_URI: http://config-service:8888
       SPRING_CLOUD_CONFIG_FAIL_FAST: false
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+      #redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DATABASE: 2
+
     networks:
       - restaurant-network
     depends_on:
@@ -438,6 +457,10 @@ services:
       SPRING_CLOUD_CONFIG_URI: http://config-service:8888
       SPRING_CLOUD_CONFIG_FAIL_FAST: false
       EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://discovery-service:8761/eureka/
+      #redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DATABASE: 1
     networks:
       - restaurant-network
     depends_on:

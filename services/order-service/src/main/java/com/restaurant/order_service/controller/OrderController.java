@@ -30,9 +30,9 @@ public class OrderController {
 
 
     @GetMapping("/{id}")
-    public ResponseEntity<OrderDetailsResponseDTO> getOrder(@PathVariable Long id) {
+    public ResponseEntity<OrderResponseDTO> getOrder(@PathVariable Long id) {
         log.info(" GET /api/orders/{}", id);
-        OrderDetailsResponseDTO order = orderService.getOrder(id);
+        OrderResponseDTO order = orderService.getFullOrder(id);  /// Redis используем кэшируемый метод
         return ResponseEntity.ok(order);
     }
 

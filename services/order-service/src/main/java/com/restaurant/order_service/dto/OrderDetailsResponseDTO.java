@@ -2,13 +2,19 @@ package com.restaurant.order_service.dto;
 
 import lombok.Builder;
 import lombok.Data;
+
+import java.io.Serial;
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
 @Builder
-public class OrderDetailsResponseDTO {
+public class OrderDetailsResponseDTO implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     private Long id;
     private Long userId;
     private String status;
@@ -18,11 +24,13 @@ public class OrderDetailsResponseDTO {
 
     @Data
     @Builder
-    public static class OrderItemDto {
+    public static class OrderItemDto implements Serializable {
+        @Serial
+        private static final long serialVersionUID = 1L;
+
         private Long id;
         private String productName;
         private Integer quantity;
         private BigDecimal price;
     }
-
 }

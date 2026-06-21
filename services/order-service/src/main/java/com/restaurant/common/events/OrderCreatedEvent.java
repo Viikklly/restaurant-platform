@@ -1,6 +1,6 @@
 package com.restaurant.common.events;
 
-import com.restaurant.order_service.dto.ItemDTO;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;

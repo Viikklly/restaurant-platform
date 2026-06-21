@@ -295,6 +295,8 @@ spring:
 
   data:
     redis:
+      host: redis
+      port: 6379
       # timeout: таймаут подключения к Redis
       timeout: 2000ms # 2 секунды
       # Если Redis не отвечает 2 секунды - ошибка

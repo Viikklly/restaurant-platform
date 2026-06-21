@@ -1,22 +1,24 @@
 package com.restaurant.order_service.dto;
 
-
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class OrderResponseDTO {
+@Builder
+public class OrderResponseDTO implements Serializable {
     private Long id;
+    private Long userId;
     private String status;
-    private List<String> itemsList;
+    private List<String> items;
     private BigDecimal totalAmount;
     private LocalDateTime createdAt;
 }
