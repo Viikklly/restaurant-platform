@@ -108,7 +108,7 @@ public class PaymentService {
         String cacheKey = "payments:all";
 
         /// Пробуем взять из кэша
-        List<PaymentTransaction> cached = redisService.get(cacheKey, List.class);
+        List<PaymentTransaction> cached = redisService.getList(cacheKey, PaymentTransaction.class);
         if (cached != null) {
             log.info("Получен список всех транзакций из кэша ({} записей)", cached.size());
             return cached;
@@ -158,7 +158,7 @@ public class PaymentService {
         String cacheKey = "payments:order:" + orderId;
 
         /// Пробуем взять из кэша
-        List<PaymentTransaction> cached = redisService.get(cacheKey, List.class);
+        List<PaymentTransaction> cached = redisService.getList(cacheKey, PaymentTransaction.class);
         if (cached != null) {
             log.info("Транзакции заказа #{} получены из кэша ({} записей)", orderId, cached.size());
             return cached;
@@ -183,7 +183,7 @@ public class PaymentService {
         String cacheKey = "payments:user:" + userId;
 
         /// Пробуем взять из кэша
-        List<PaymentTransaction> cached = redisService.get(cacheKey, List.class);
+        List<PaymentTransaction> cached = redisService.getList(cacheKey, PaymentTransaction.class);
         if (cached != null) {
             log.info("Транзакции пользователя #{} получены из кэша ({} записей)", userId, cached.size());
             return cached;

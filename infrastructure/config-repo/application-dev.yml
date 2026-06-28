@@ -74,3 +74,28 @@ logging:
     com.restaurant: DEBUG               # Сервисы
     org.hibernate.SQL: DEBUG            # SQL запросы Hibernate
     org.springframework.kafka: DEBUG    # Kafka сообщения
+    org.springframework.web: DEBUG
+
+
+#PROMETHEUS & METRICS
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0
+    propagation:
+      consume: B3
+      produce: B3
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans  # Jaeger локально

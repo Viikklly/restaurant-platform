@@ -2,7 +2,6 @@ package com.restaurant.order_service.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.restaurant.order_service.dto.OrderCreateRequestDTO;
-import com.restaurant.order_service.dto.OrderDetailsResponseDTO;
 import com.restaurant.order_service.dto.OrderResponseDTO;
 import com.restaurant.order_service.service.OrderService;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,7 +14,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -23,12 +21,9 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(OrderController.class) /// Тестирование только контроллера
+@WebMvcTest(OrderController.class)
 class OrderControllerTest {
 
-    /**
-     * Отправляет HTTP-запросы к контроллерам и проверяет ответы без поднятия реального сервера
-     */
     @Autowired
     private MockMvc mockMvc;
 
@@ -40,54 +35,61 @@ class OrderControllerTest {
 
     private OrderCreateRequestDTO createRequest;
     private OrderResponseDTO createResponse;
-    private OrderDetailsResponseDTO detailsResponse;
+    private OrderResponseDTO getResponse;
 
     @BeforeEach
     void setUp() {
-        /// Данные для создания заказа
+        //  Данные для создания заказа
         createRequest = new OrderCreateRequestDTO();
         createRequest.setUserId(1L);
 
-        /// Ответ на создание
-        createResponse = new OrderResponseDTO(
-                1L,
-                "PENDING",
-                new ArrayList<>(List.of("Пицца", "Пицца", "Паста")),
-                new BigDecimal("499.99"),
-                LocalDateTime.now()
-        );
+        OrderCreateRequestDTO.ItemRequestDTO item = new OrderCreateRequestDTO.ItemRequestDTO();
+        item.setProductName("Пицца");
+        item.setQuantity(2);
+        createRequest.setItems(List.of(item));
 
-        /// Ответ на получение заказа
-        detailsResponse = OrderDetailsResponseDTO.builder()
+        // Ответ на создание
+        createResponse = OrderResponseDTO.builder()
                 .id(1L)
                 .userId(1L)
                 .status("PENDING")
-                .totalAmount(new BigDecimal("499.99"))
+                .items(List.of("Пицца", "Пицца"))
+                .totalAmount(new BigDecimal("999.98"))
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        // Ответ на получение заказа
+        getResponse = OrderResponseDTO.builder()
+                .id(1L)
+                .userId(1L)
+                .status("PENDING")
+                .items(List.of("Пицца", "Пицца"))
+                .totalAmount(new BigDecimal("999.98"))
                 .createdAt(LocalDateTime.now())
                 .build();
     }
 
-    /// POST
+    // POST /api/orders
+
     @Test
     void createOrder_ShouldReturnCreated() throws Exception {
-
         when(orderService.createOrder(any(OrderCreateRequestDTO.class))).thenReturn(createResponse);
-
 
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(1L))
+                .andExpect(jsonPath("$.userId").value(1L))
                 .andExpect(jsonPath("$.status").value("PENDING"))
-                .andExpect(jsonPath("$.totalAmount").value(499.99));
+                .andExpect(jsonPath("$.totalAmount").value(999.98))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(2));
     }
 
     @Test
     void createOrder_ShouldReturnBadRequest_WhenUserIdIsNull() throws Exception {
-
         createRequest.setUserId(null);
-
 
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -95,23 +97,31 @@ class OrderControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void createOrder_ShouldReturnBadRequest_WhenItemsIsEmpty() throws Exception {
+        createRequest.setItems(List.of());
+
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createRequest)))
+                .andExpect(status().isBadRequest());
+    }
 
     @Test
     void createOrder_ShouldReturnBadRequest_WhenItemsIsNull() throws Exception {
         createRequest.setItems(null);
 
         mockMvc.perform(post("/api/orders")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(createRequest)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(createRequest)))
                 .andExpect(status().isBadRequest());
-
     }
-    /// GET
+
+    // GET /api/orders/{id}
+
     @Test
     void getOrder_ShouldReturnOrder_WhenIdExists() throws Exception {
-
-        when(orderService.getOrder(1L)).thenReturn(detailsResponse);
-
+        when(orderService.getFullOrder(1L)).thenReturn(getResponse);
 
         mockMvc.perform(get("/api/orders/1")
                         .contentType(MediaType.APPLICATION_JSON))
@@ -119,19 +129,18 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.id").value(1L))
                 .andExpect(jsonPath("$.userId").value(1L))
                 .andExpect(jsonPath("$.status").value("PENDING"))
-                .andExpect(jsonPath("$.totalAmount").value(999.98));
+                .andExpect(jsonPath("$.totalAmount").value(999.98))
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items.length()").value(2));
     }
 
     @Test
     void getOrder_ShouldReturnError_WhenIdDoesNotExist() throws Exception {
-
-        when(orderService.getOrder(999L))
+        when(orderService.getFullOrder(999L))
                 .thenThrow(new RuntimeException("Заказ не найден: 999"));
-
 
         mockMvc.perform(get("/api/orders/999")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().is5xxServerError());
     }
-
 }

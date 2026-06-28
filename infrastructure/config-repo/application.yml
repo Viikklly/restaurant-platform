@@ -47,13 +47,13 @@ eureka:
     lease-expiration-duration-in-seconds: 90
 
 
-# MANAGEMENT (AKTYATOP - МОНИТОРИНГ)
-# - Проверять, жив ли сервис (health check для Docker/K8s)
-# - Собирать метрики (количество запросов, время ответа, использование памяти)
-# - Отслеживать распределенные запросы через трассировку
-# - Получать информацию о версии и настройках сервиса
+# MANAGEMENT (МОНИТОРИНГ)
+# - Проверяет, жив ли сервис (health check для Docker/K8s)
+# - Собирает метрики (количество запросов, время ответа, использование памяти)
+# - Отслеживает распределенные запросы через трассировку
+# - Получает информацию о версии и настройках сервиса
 
-
+    # PROMETHEUS & METRICS
 management:
   endpoints:
     web:
@@ -63,15 +63,12 @@ management:
         # health - проверка здоровья: GET /actuator/health
         #   Возвращает: {"status": "UP"} или {"status": "DOWN"}
         #   Docker/K8s используют это для проверки, перезапускать ли контейнер
-
         # info - информация о сервисе: GET /actuator/info
         #   Возвращает: {"app": "auth-service", "version": "1.0.0"}
         #   Полезно для версионирования и документации
-
         # metrics - метрики: GET /actuator/metrics
         #   Возвращает: список всех доступных метрик
         #   Примеры: jvm.memory.used, http.server.requests, process.cpu.usage
-
         # prometheus - метрики в формате Prometheus: GET /actuator/prometheus
         #   Возвращает метрики в текстовом формате, который читает Prometheus
         #   Prometheus собирает эти данные каждые N секунд
@@ -86,11 +83,9 @@ management:
       # always - всегда показывать детали
       # when-authorized - только для авторизованных
       # never - не показывать детали
-
       show-components: always
       # Показывает список компонентов, которые проверяются
       # Полезно для отладки - сразу видно, какой компонент упал
-
     metrics:
       enabled: true
       # Включает сбор метрик
@@ -100,7 +95,6 @@ management:
       # - Система (CPU, файловая система)
       # - БД (пул соединений, запросы)
       # - Kafka (сообщения, задержки)
-
     prometheus:
       enabled: true
       # Включает экспорт метрик в формате Prometheus
@@ -131,6 +125,13 @@ management:
       # 2. Передает его в заголовке X-B3-TraceId в следующий сервис
       # 3. Все сервисы логируют этот TraceId
       # 4. Jaeger собирает все отрезки (Spans) и рисует схему
+    propagation:
+      consume: B3
+      produce: B3
+  zipkin:
+    tracing:
+      # Адрес, куда отправлять спаны.
+      endpoint: http://jaeger:9411/api/v2/spans
 
 
 #  SPRING
@@ -359,3 +360,5 @@ logging:
 
     # spring-kafka: логи Kafka (сообщения, консьюмеры)
     org.springframework.kafka: INFO
+
+

@@ -1,0 +1,26 @@
+apiVersion: 1
+
+datasources:
+  # Prometheus
+  - name: Prometheus
+    type: prometheus
+    access: proxy          # Grafana проксирует запросы к Prometheus
+    url: http://prometheus:9090
+    isDefault: true        # Этот источник используется по умолчанию
+    editable: true         # Можно редактировать через UI
+    jsonData:
+      timeInterval: 15s    # Интервал запроса данных по умолчанию
+      queryTimeout: 30s    # Таймаут запроса к Prometheus
+      manageAlerts: true   # Разрешить управление алертами через Grafana
+
+  # Jaeger
+  - name: Jaeger
+    type: jaeger
+    url: http://jaeger:16686
+    jsonData:
+      tracesToLogsV2: # Интеграция с Loki для перехода от трейсов к логам
+        datasourceUid: 'loki'    # Ссылка на источник Loki
+        spanStartTimeShift: '1h' # Сдвиг времени начала спана для поиска логов
+        spanEndTimeShift: '1h'   # Сдвиг времени окончания спана
+        filterByTraceID: true    # Фильтровать логи по TraceID
+        filterBySpanID: false    # Не фильтровать по SpanID

@@ -1,0 +1,32 @@
+# правила записи (recording rules)
+# как вычисляются новые метрики из существующих и сохраняют их
+groups:
+  - name: service_metrics
+    interval: 30s  # Вычисляются каждые 30 секунд (как и алерты)
+    rules:
+      # Частота запросов
+      # rate(http_server_requests_seconds_count[5m]) — среднее количество запросов в секунду за последние 5 минут
+      # sum(...) by (instance) — суммирует по всем эндпоинтам/методам, группируя по инстансу
+      # ____ запросов / секунду
+      - record: job:http_requests_per_second:rate5m
+        expr: sum(rate(http_server_requests_seconds_count[5m])) by (instance)
+
+      # Частота ошибок
+      # rate(...{status=~"5.."}) — только запросы с HTTP-статусами 5xx (500, 502, 503 и т.д.)
+      # ___ ошибки в секунду
+      - record: job:http_errors_per_second:rate5m
+        expr: sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) by (instance)
+
+      # P95 времени ответа
+      # rate(http_server_requests_seconds_bucket[5m]) — скорость попадания в каждую корзину гистограммы
+      # sum(...) by (le, instance) — суммирует по корзинам (le) и инстансам
+      # histogram_quantile(0.95, ...) — вычисляет 95-й перцентиль
+      - record: job:http_request_duration_seconds:p95
+        expr: histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket[5m])) by (le, instance))
+
+      # Процент ошибок
+      # Делим количество ошибок на общее количество запросов и умножаем на 100, чтобы получить проценты
+      - record: job:http_error_rate:percent5m
+        expr: |
+          (sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) by (instance) /
+           sum(rate(http_server_requests_seconds_count[5m])) by (instance)) * 100

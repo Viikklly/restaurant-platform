@@ -33,7 +33,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
 
-        System.out.println("=== SECURITY CONFIG IS BEING LOADED ===");
+        System.out.println(" SECURITY CONFIG IS BEING LOADED");
 
         http
                 /// ОТКЛЮЧАЕМ так как

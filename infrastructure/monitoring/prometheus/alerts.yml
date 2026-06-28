@@ -1,0 +1,45 @@
+groups:
+  - name: service_alerts
+    interval: 30s
+    rules:
+      - alert: ServiceDown
+        expr: up{job="restaurant-services"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: " Сервис {{ $labels.instance }} недоступен"
+          description: "Сервис {{ $labels.instance }} не отвечает уже более 1 минуты"
+
+      # Отслеживает 5ХХ ошибки
+      - alert: HighErrorRate
+        expr: |
+          (sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) by (instance) / 
+           sum(rate(http_server_requests_seconds_count[5m])) by (instance)) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: " Много ошибок 5xx на {{ $labels.instance }}"
+          description: "Доля ошибок составляет {{ $value | humanizePercentage }} на {{ $labels.instance }} уже более 2 минут"
+
+      # 95-й перцентиль = время, за которое выполняются 95% всех запросов
+      # Если он > 1с → 95% пользователей испытывают тормоза
+      - alert: SlowRequests
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(http_server_requests_seconds_bucket[5m])) by (le, instance)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Медленные запросы на {{ $labels.instance }}"
+          description: |
+            95-й перцентиль времени ответа на {{ $labels.instance }} составляет {{ $value }}с
+            (порог - 1с). Превышение длится более 5 минут.
+
+            Рекомендуется проверить:
+            - состояние базы данных
+            - внешние интеграции
+            - утилизацию CPU и памяти

@@ -41,6 +41,19 @@ eureka:
   instance:
     prefer-ip-address: true
     instance-id: ${spring.application.name}:${random.uuid}
+    hostname: ${spring.application.name}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    prometheus:
+      enabled: true
+    metrics:
+      enabled: true
 
 
 # ЛОГИРОВАНИЕ (видеть, какие конфиги отдаются)

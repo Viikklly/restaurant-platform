@@ -109,7 +109,7 @@ public class RedisConfig {
                 false  /// Игнорируем неизвестные поля
         );
 
-        // === 4. ДЛЯ ОТЛАДКИ (опционально) ===
+        ///  Отладка
         objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
 
         return new GenericJackson2JsonRedisSerializer(objectMapper);

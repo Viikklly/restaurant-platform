@@ -15,41 +15,91 @@ public class RedisService {
     private final RedisTemplate<String, Object> redisTemplate;
 
     /**
-     * Сохранить в кэш
+     * Сохранить в кэш без TTL
      */
     public void save(String key, Object value) {
         redisTemplate.opsForValue().set(key, value);
-        log.debug("Сохранено в Redis: {}", key);
+        log.debug("Redis: сохранён ключ '{}'", key);
     }
 
     /**
-     * Сохранить с временем жизни (секунды)
-     * "страховка" на случай, если забыть где-то очистить кэш
+     * Сохранить в кэш с TTL (секунды)
      */
     public void saveWithExpire(String key, Object value, long seconds) {
         redisTemplate.opsForValue().set(key, value, seconds, TimeUnit.SECONDS);
-        log.debug("Сохранено в Redis на {} секунд: {}", seconds, key);
+        log.debug("Redis: сохранён ключ '{}' на {} сек", key, seconds);
     }
 
     /**
-     * Получить из кэша
+     * Получить объект из кэша
+     */
+    public Object get(String key) {
+        Object value = redisTemplate.opsForValue().get(key);
+        if (value != null) {
+            log.debug("Redis: получен ключ '{}'", key);
+        }
+        return value;
+    }
+
+    /**
+     * Получить объект из кэша с приведением типа
      */
     @SuppressWarnings("unchecked")
     public <T> T get(String key, Class<T> type) {
-        Object value = redisTemplate.opsForValue().get(key);
+        Object value = get(key);
         if (value == null) {
             return null;
         }
-        return (T) value;
+        try {
+            return (T) value;
+        } catch (ClassCastException e) {
+            log.warn("Не удалось привести объект к типу {} для ключа '{}'",
+                    type.getSimpleName(), key);
+            return null;
+        }
     }
 
     /**
-     * Удалить из кэша
+     * Получить список из кэша с проверкой типа
+     */
+    @SuppressWarnings("unchecked")
+    public <T> java.util.List<T> getList(String key, Class<T> elementType) {
+        Object value = get(key);
+        if (value == null) {
+            return null;
+        }
+        try {
+            if (value instanceof java.util.List<?>) {
+                java.util.List<?> list = (java.util.List<?>) value;
+                if (!list.isEmpty()) {
+                    Object first = list.get(0);
+                    if (elementType.isInstance(first)) {
+                        return (java.util.List<T>) list;
+                    }
+                }
+                return (java.util.List<T>) list;
+            }
+            return null;
+        } catch (ClassCastException e) {
+            log.warn("Не удалось привести список к типу {} для ключа '{}'",
+                    elementType.getSimpleName(), key);
+            return null;
+        }
+    }
+
+    /**
+     * Удалить ключ из кэша
      */
     public void delete(String key) {
         redisTemplate.delete(key);
-        log.debug("Удалено из Redis: {}", key);
+        log.debug("Redis: удалён ключ '{}'", key);
     }
 
-
+    /**
+     * Проверить существование ключа
+     */
+    public boolean hasKey(String key) {
+        Boolean hasKey = redisTemplate.hasKey(key);
+        return Boolean.TRUE.equals(hasKey);
+    }
 }

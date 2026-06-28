@@ -312,6 +312,11 @@ services:
     depends_on:
       - discovery-service
       - config-service
+      - auth-service
+      - order-service
+      - kitchen-service
+      - payment-service
+      - notification-service
       # Запускается после этих сервисов
     environment:
       SPRING_PROFILES_ACTIVE: docker
@@ -470,6 +475,87 @@ services:
       - kafka
       - redis
 
+  # MONITORING МОНИТОРИНГ
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: restaurant-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./infrastructure/monitoring/prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - restaurant-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # GRAFANA
+  grafana:
+    image: grafana/grafana:latest
+    container_name: restaurant-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./infrastructure/monitoring/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-worldmap-panel
+    networks:
+      - restaurant-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # JAEGER
+  jaeger:
+    image: jaegertracing/jaeger:latest # Или зафиксируйте версию: 2.15.0
+    container_name: restaurant-jaeger
+    ports:
+      # UI и API
+      - "16686:16686"
+      # Zipkin API (для Spring Boot)
+      - "9411:9411"
+      # OTLP (OpenTelemetry) для современных клиентов
+      - "4317:4317"   # gRPC
+      - "4318:4318"   # HTTP
+    environment:
+      # Используем память для хранения (быстро и без прав)
+      - JAEGER_STORAGE_TYPE=memory
+      # Включаем все коллекторы
+      - JAEGER_COLLECTOR_OTLP_ENABLED=true
+      - JAEGER_OTLP_HOST=0.0.0.0
+    networks:
+      - restaurant-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:16686/api/services" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
 # СЕТИ
 networks:
@@ -497,6 +583,9 @@ volumes:
   postgres-payment-data:
   redis-data:
   kafka-data:
+  prometheus-data:
+  grafana-data:
+  jaeger-data:
 
   # Правильный порядок запуска:
   #1. discovery-service  (Eureka)  # Eureka (чтобы найти другие сервисы)
