@@ -17,6 +17,11 @@ function Show-Menu {
   8. Логи (конкретный сервис)
   9. Тестирование всех сервисов
  10. Показать все URL
+ 11. Запуск только мониторинга
+ 12. Логи мониторинга
+ 13. Проверить мониторинг
+ 14. Проверить Eureka
+ 15. Очистка Docker системы
   0. Выход
 
 "@ $Script:Colors.Info
@@ -28,7 +33,7 @@ function Wait-Enter {
 
 do {
     Show-Menu
-    $choice = Read-Host "Выберите действие (0-10)"
+    $choice = Read-Host "Выберите действие (0-15)"
 
     switch ($choice) {
         "1" {
@@ -69,6 +74,25 @@ do {
         }
         "10" {
             Show-Urls
+            Wait-Enter
+        }
+        "11" {
+            & .\start-monitoring.ps1
+            Wait-Enter
+        }
+        "12" {
+            & .\logs.ps1 -Service prometheus -Follow
+        }
+        "13" {
+            Check-Monitoring
+            Wait-Enter
+        }
+        "14" {
+            & .\check-eureka.ps1
+            Wait-Enter
+        }
+        "15" {
+            & .\clean.ps1
             Wait-Enter
         }
         "0" {

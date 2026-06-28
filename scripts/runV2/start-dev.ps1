@@ -4,40 +4,48 @@
 
 Write-Section "ЗАПУСК ДЛЯ РАЗРАБОТКИ"
 
-# Проверка Docker
 if (-not (Test-Docker)) {
     Write-Error "Docker не установлен!"
     exit 1
 }
 
-# 1. Полная очистка
-Write-Step "Полная очистка..."
-docker-compose down -v 2>&1 | Out-Null
-Write-Success "Контейнеры и тома удалены"
+# Определяем путь к compose файлам
+$composeInfra = "..\..\docker-compose.infra.yml"
 
-Start-Sleep -Seconds 5
+# Проверяем наличие файла
+if (-not (Test-Path $composeInfra)) {
+    Write-Error "Файл $composeInfra не найден!"
+    Write-Color "`n  Проверьте, что файл находится в корне проекта" $Script:Colors.Warning
+    Write-Color "  Ожидаемый путь: ..\..\docker-compose.infra.yml" $Script:Colors.Info
+    exit 1
+}
 
-# 2. Удаляем orphans
-Write-Step "Удаляем orphan контейнеры..."
-docker-compose down --remove-orphans 2>&1 | Out-Null
-Write-Success "Orphan контейнеры удалены"
+# Очистка
+Write-Step "Очистка старых контейнеров..."
+docker-compose -f $composeInfra down -v 2>&1 | Out-Null
+docker-compose -f $composeInfra down --remove-orphans 2>&1 | Out-Null
+Write-Success "Очистка выполнена"
 
-Start-Sleep -Seconds 5
+# Запуск
+Write-Step "Запуск инфраструктуры и мониторинга..."
+docker-compose -f $composeInfra up -d
+Write-Success "Запуск выполнен"
 
-# 3. Показываем статус
-Write-Step "Текущий статус:"
-docker ps -a
-
-Start-Sleep -Seconds 10
-
-# 4. Запускаем инфраструктуру
-Write-Step "Запускаем инфраструктуру..."
-docker-compose -f docker-compose.infra.yml up -d
-Write-Success "Инфраструктура запущена"
-
+# Пауза для инициализации
+Write-Step "Ожидание инициализации сервисов..."
 Start-Sleep -Seconds 15
 
-# 5. Показываем результат
+# Результат
 Write-Section "ГОТОВО!"
-Show-Containers
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 Show-Urls
+
+Write-Success "`n Запуск микросервисов через IDE."
+Write-Color "    1. Discovery Service   → http://localhost:8761" $Script:Colors.Info
+Write-Color "    2. Config Service      → http://localhost:8888" $Script:Colors.Info
+Write-Color "    3. Auth Service        → http://localhost:8081" $Script:Colors.Info
+Write-Color "    4. Order Service       → http://localhost:8082" $Script:Colors.Info
+Write-Color "    5. Kitchen Service     → http://localhost:8083" $Script:Colors.Info
+Write-Color "    6. Payment Service     → http://localhost:8084" $Script:Colors.Info
+Write-Color "    7. Notification Service → http://localhost:8086" $Script:Colors.Info
+Write-Color "    8. Gateway Service     → http://localhost:8090" $Script:Colors.Info

@@ -1,7 +1,6 @@
 # lib/functions.ps1
 # ОБЩИЕ ФУНКЦИИ ДЛЯ СКРИПТОВ
 
-
 # Цвета
 $Script:Colors = @{
     Error = 'Red'
@@ -66,21 +65,34 @@ function Show-Containers {
 # Показать все URL
 function Show-Urls {
     Write-Section "ДОСТУПНЫЕ СЕРВИСЫ"
+
     Write-Color "`n  ИНФРАСТРУКТУРА:" $Script:Colors.Info
-    Write-Color "    Eureka:      http://localhost:8761" $Script:Colors.Info
-    Write-Color "    PGAdmin:     http://localhost:5050" $Script:Colors.Info
+    Write-Color "    PostgreSQL Auth:    localhost:5437 (authdb/postgres/postgres)" $Script:Colors.Info
+    Write-Color "    PostgreSQL Order:   localhost:5433 (orderdb/postgres/postgres)" $Script:Colors.Info
+    Write-Color "    PostgreSQL Kitchen: localhost:5434 (kitchendb/postgres/postgres)" $Script:Colors.Info
+    Write-Color "    PostgreSQL Payment: localhost:5435 (paymentdb/postgres/postgres)" $Script:Colors.Info
+    Write-Color "    Redis:              localhost:6379" $Script:Colors.Info
+    Write-Color "    Kafka:              localhost:9092" $Script:Colors.Info
+    Write-Color "    Zookeeper:          localhost:2181" $Script:Colors.Info
+
+    Write-Color "`n  UI/ВИЗУАЛИЗАЦИЯ:" $Script:Colors.Info
+    Write-Color "    PGAdmin:     http://localhost:5050 (admin@restaurant.com/admin)" $Script:Colors.Info
     Write-Color "    Kafka UI:    http://localhost:8085" $Script:Colors.Info
+
+    Write-Color "`n  МОНИТОРИНГ:" $Script:Colors.Info
     Write-Color "    Prometheus:  http://localhost:9090" $Script:Colors.Info
     Write-Color "    Grafana:     http://localhost:3000 (admin/admin)" $Script:Colors.Info
     Write-Color "    Jaeger:      http://localhost:16686" $Script:Colors.Info
 
-    Write-Color "`n  МИКРОСЕРВИСЫ:" $Script:Colors.Info
+    Write-Color "`n  МИКРОСЕРВИСЫ (после запуска):" $Script:Colors.Info
     Write-Color "    Gateway:     http://localhost:8090" $Script:Colors.Info
     Write-Color "    Auth:        http://localhost:8081" $Script:Colors.Info
     Write-Color "    Order:       http://localhost:8082" $Script:Colors.Info
     Write-Color "    Kitchen:     http://localhost:8083" $Script:Colors.Info
     Write-Color "    Payment:     http://localhost:8084" $Script:Colors.Info
     Write-Color "    Notification: http://localhost:8086" $Script:Colors.Info
+    Write-Color "    Eureka:      http://localhost:8761" $Script:Colors.Info
+    Write-Color "    Config:      http://localhost:8888" $Script:Colors.Info
 }
 
 # Проверка готовности сервиса
@@ -112,42 +124,39 @@ function Wait-For-Service {
     return $false
 }
 
-# Проверка регистрации в Eureka
-function Check-Eureka {
-    Write-Step "Проверяем регистрацию в Eureka..."
+
+# Проверка готовности мониторинга
+function Check-Monitoring {
+    Write-Step "Проверяем компоненты мониторинга..."
 
     $services = @(
-        "AUTH-SERVICE",
-        "ORDER-SERVICE",
-        "KITCHEN-SERVICE",
-        "PAYMENT-SERVICE",
-        "NOTIFICATION-SERVICE",
-        "GATEWAY-SERVICE"
+        @{Name="Prometheus"; Url="http://localhost:9090/-/healthy"},
+        @{Name="Grafana"; Url="http://localhost:3000/api/health"},
+        @{Name="Jaeger"; Url="http://localhost:16686/api/services"}
     )
 
-    try {
-        $eureka = Invoke-RestMethod -Uri "http://localhost:8761/eureka/apps" -TimeoutSec 10 -ErrorAction Stop
-        $registered = @()
-        foreach ($app in $eureka.applications.application) {
-            $registered += $app.name
-        }
+    $allOk = $true
+    Write-Color "`n  Статус мониторинга:" $Script:Colors.Info
 
-        Write-Color "`n  Регистрация в Eureka:" $Script:Colors.Info
-        $allOk = $true
-        foreach ($svc in $services) {
-            if ($registered -contains $svc) {
-                Write-Success $svc
+    foreach ($svc in $services) {
+        try {
+            $response = Invoke-WebRequest -Uri $svc.Url -TimeoutSec 3 -UseBasicParsing -ErrorAction Stop
+            if ($response.StatusCode -eq 200) {
+                Write-Success "$($svc.Name): готов"
             } else {
-                Write-Warning "$svc (не зарегистрирован)"
+                Write-Warning "$($svc.Name): Status $($response.StatusCode)"
                 $allOk = $false
             }
+        } catch {
+            Write-Warning "$($svc.Name): не отвечает"
+            $allOk = $false
         }
+    }
 
-        if ($allOk) {
-            Write-Success "`n  Все сервисы зарегистрированы!"
-        }
-    } catch {
-        Write-Warning "Не удалось проверить Eureka (возможно еще не готова)"
-        Write-Color "  Проверьте вручную: http://localhost:8761" $Script:Colors.Info
+    if ($allOk) {
+        Write-Success "`n  Все компоненты мониторинга работают!"
+    } else {
+        Write-Warning "`n  Некоторые компоненты мониторинга недоступны"
+        Write-Color "    Проверьте логи: docker-compose -f docker-compose.infra.yml logs" $Script:Colors.Info
     }
 }

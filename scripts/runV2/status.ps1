@@ -36,6 +36,30 @@ function Show-Status {
             Write-Error "$($svc.Name): DOWN"
         }
     }
+
+    # Проверка мониторинга
+    Write-Section "ЗДОРОВЬЕ МОНИТОРИНГА"
+    $monitoring = @(
+        @{Name="Prometheus"; Url="http://localhost:9090/-/healthy"},
+        @{Name="Grafana"; Url="http://localhost:3000/api/health"},
+        @{Name="Alertmanager"; Url="http://localhost:9093/-/healthy"},
+        @{Name="Loki"; Url="http://localhost:3100/ready"},
+        @{Name="Jaeger"; Url="http://localhost:16686/api/services"}
+    )
+
+    foreach ($svc in $monitoring) {
+        try {
+            $response = Invoke-WebRequest -Uri $svc.Url -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop
+            if ($response.StatusCode -eq 200) {
+                Write-Success "$($svc.Name): OK"
+            } else {
+                Write-Warning "$($svc.Name): Status $($response.StatusCode)"
+            }
+        } catch {
+            Write-Error "$($svc.Name): DOWN"
+        }
+    }
+
 }
 
 if ($Watch) {
