@@ -1,3 +1,4 @@
+# Правила алертинга
 groups:
   - name: service_alerts
     interval: 30s

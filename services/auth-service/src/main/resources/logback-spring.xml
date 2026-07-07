@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Консоль выводит JSON, а не текст (JSON для Promtail).(Куда пишутся логи) -->
+    <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <!-- В каком формате писать логи -->
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <!--  какие поля включить в JSON -->
+            <providers>
+                <!-- Время -->
+                <timestamp>
+                    <fieldName>timestamp</fieldName>
+                    <timeZone>UTC</timeZone>
+                </timestamp>
+                <version/>
+
+                <!-- Уровень логирования -->
+                <logLevel>
+                    <fieldName>level</fieldName>
+                </logLevel>
+
+                <!-- Имя логгера (класс) -->
+                <loggerName>
+                    <fieldName>logger</fieldName>
+                </loggerName>
+
+                <!-- Имя потока -->
+                <threadName>
+                    <fieldName>thread</fieldName>
+                </threadName>
+
+                <!-- Сообщение -->
+                <message>
+                    <fieldName>message</fieldName>
+                </message>
+
+                <!-- Stacktrace (если есть) -->
+                <stackTrace>
+                    <fieldName>stacktrace</fieldName>
+                </stackTrace>
+
+                <!-- поддержка маркеров -->
+                <marker>
+                    <fieldName>marker</fieldName>
+                </marker>
+
+                <!--включаем все поля MDC -->
+                <mdc>
+                    <fieldName>mdc</fieldName>
+                    <!-- Явно указываем ключевые поля для Saga -->
+                    <includeMdcKeyName>traceId</includeMdcKeyName>
+                    <includeMdcKeyName>spanId</includeMdcKeyName>
+                    <includeMdcKeyName>correlationId</includeMdcKeyName>
+                    <includeMdcKeyName>parentId</includeMdcKeyName>
+                    <includeMdcKeyName>instanceId</includeMdcKeyName>
+                    <!-- Добавляем все остальные поля -->
+                    <includeMdcKeyName>.*</includeMdcKeyName>
+                </mdc>
+
+                <!-- Контекст приложения -->
+                <context>
+                    <fieldName>application</fieldName>
+                    <fieldValue>${spring.application.name:-unknown}</fieldValue>
+                </context>
+            </providers>
+        </encoder>
+    </appender>
+
+    <!-- Файловый аппендер (JSON)-->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/${spring.application.name:-app}.log</file>
+
+        <!-- пишем только INFO и выше ===== -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level>
+        </filter>
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>logs/${spring.application.name:-app}.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>7</maxHistory>
+        </rollingPolicy>
+
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp/>
+                <version/>
+                <logLevel/>
+                <loggerName/>
+                <threadName/>
+                <message/>
+                <stackTrace/>
+                <marker/>
+                <!-- Явно указываем поля MDC-->
+                <mdc>
+                    <fieldName>mdc</fieldName>
+                    <includeMdcKeyName>traceId</includeMdcKeyName>
+                    <includeMdcKeyName>spanId</includeMdcKeyName>
+                    <includeMdcKeyName>correlationId</includeMdcKeyName>
+                    <includeMdcKeyName>.*</includeMdcKeyName>
+                </mdc>
+                <context/>
+            </providers>
+        </encoder>
+    </appender>
+
+    <!-- ROOT логгер (все логи идут в JSON) -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE_JSON"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+    <!-- Сервисы (DEBUG для разработки)-->
+    <logger name="com.restaurant" level="DEBUG"/>
+
+    <!-- Сторонние библиотеки  -->
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="org.apache.kafka" level="WARN"/>
+    <logger name="org.hibernate" level="WARN"/>
+    <logger name="org.hibernate.SQL" level="DEBUG"/> <!-- SQL запросы для отладки -->
+</configuration>

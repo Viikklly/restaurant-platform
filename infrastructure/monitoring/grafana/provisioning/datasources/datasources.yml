@@ -1,3 +1,4 @@
+# настройка Grafana
 apiVersion: 1
 
 datasources:
@@ -17,6 +18,7 @@ datasources:
   - name: Jaeger
     type: jaeger
     url: http://jaeger:16686
+    isDefault: false
     jsonData:
       tracesToLogsV2: # Интеграция с Loki для перехода от трейсов к логам
         datasourceUid: 'loki'    # Ссылка на источник Loki
@@ -24,3 +26,14 @@ datasources:
         spanEndTimeShift: '1h'   # Сдвиг времени окончания спана
         filterByTraceID: true    # Фильтровать логи по TraceID
         filterBySpanID: false    # Не фильтровать по SpanID
+
+
+  # Loki
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    version: 1
+    editable: true
+    jsonData:
+      maxLines: 1000

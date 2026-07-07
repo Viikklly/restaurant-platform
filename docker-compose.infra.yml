@@ -183,8 +183,10 @@ services:
       - postgres-payment
 
 
-  # MONITORING
 
+  # МОНИТОРИНГ
+
+  # PROMETHEUS
   prometheus:
     image: prom/prometheus:latest
     container_name: restaurant-prometheus
@@ -210,32 +212,6 @@ services:
       retries: 3
       start_period: 20s
 
-  # GRAFANA
-  grafana:
-    image: grafana/grafana:latest
-    container_name: restaurant-grafana
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./infrastructure/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - ./infrastructure/monitoring/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-worldmap-panel
-    networks:
-      - restaurant-network
-    depends_on:
-      - prometheus
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
 
   # ALERTMANAGER
   alertmanager:
@@ -261,11 +237,12 @@ services:
 
   # LOKI
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:3.0.0
     container_name: restaurant-loki
     volumes:
       - ./infrastructure/monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki-data:/loki
+      - ./infrastructure/monitoring/loki/rules:/loki/rules:ro
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/loki-config.yml
@@ -273,11 +250,11 @@ services:
       - restaurant-network
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:3100/ready" ]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 20s
+      retries: 10
+      start_period: 60s
 
   # PROMTAIL (сбор логов)
   promtail:
@@ -300,10 +277,37 @@ services:
       retries: 3
       start_period: 20s
 
+  # GRAFANA
+  grafana:
+    image: grafana/grafana:latest
+    container_name: restaurant-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./infrastructure/monitoring/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-worldmap-panel
+    networks:
+      - restaurant-network
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # JAEGER
   jaeger:
-    image: jaegertracing/jaeger:latest # Или зафиксирует версию: 2.15.0
+    image: jaegertracing/jaeger:latest # Или зафиксируйте версию: 2.15.0
     container_name: restaurant-jaeger
     ports:
       # UI и API
@@ -329,11 +333,26 @@ services:
       retries: 3
       start_period: 20s
 
+# СЕТИ
 networks:
   restaurant-network:
     driver: bridge
+    # Bridge — стандартный драйвер сети Docker
+    #Создает изолированную виртуальную сеть на одном хосте
+    #Контейнеры в bridge сети могут общаться друг с другом
+    #Контейнеры изолированы от других сетей
 
+# ------------ // ------------
+# ТОМА (ПЕРСИСТЕНТНОСТЬ ДАННЫХ)
 volumes:
+  # Docker Volumes — это механизм постоянного хранения данных, который позволяет
+  # сохранять информацию даже после удаления и пересоздания контейнеров
+
+  # Ключевые моменты:
+  # Тома сохраняют данные при перезапуске контейнеров
+  # Каждая БД имеет свой изолированный том
+  #Тома не удаляются при docker-compose down (без -v)
+  #Данные хранятся в /var/lib/docker/volumes/ на хосте
   postgres-auth-data:
   postgres-order-data:
   postgres-kitchen-data:
@@ -345,3 +364,4 @@ volumes:
   jaeger-data:
   alertmanager-data:
   loki-data:
+

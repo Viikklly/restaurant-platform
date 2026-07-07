@@ -16,9 +16,9 @@ scrape_configs:
 
   # Только микросервисы, без config-service
   - job_name: 'restaurant-services'
-    metrics_path: '/actuator/prometheus'
-    scrape_interval: 10s
-    static_configs:
+    metrics_path: '/actuator/prometheus' # Откуда собирать метрики
+    scrape_interval: 10s                  # Как часто собирать
+    static_configs:                       # Какие сервисы опрашивать
       - targets:
           - 'auth-service:8081'
           - 'order-service:8082'

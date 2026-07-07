@@ -32,8 +32,8 @@ Write-Success "БД и брокеры запущены"
 
 Start-Sleep -Seconds 15
 
-# Запускаем мониторинг
-Write-Step "Запускаем мониторинг..."
+# Запускаем мониторинг (ОДИН Loki!)
+Write-Step "Запускаем мониторинг (Prometheus, Grafana, Loki, Promtail, Jaeger, Alertmanager)..."
 docker-compose up -d prometheus grafana alertmanager loki promtail jaeger
 Write-Success "Мониторинг запущен"
 

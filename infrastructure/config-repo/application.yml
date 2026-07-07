@@ -59,7 +59,7 @@ management:
     web:
       # exposure: какие эндпоинты доступны через HTTP
       exposure:
-        include: health,info,metrics,prometheus
+        include: health,info,metrics,prometheus,httptrace
         # health - проверка здоровья: GET /actuator/health
         #   Возвращает: {"status": "UP"} или {"status": "DOWN"}
         #   Docker/K8s используют это для проверки, перезапускать ли контейнер
@@ -105,6 +105,7 @@ management:
     # tags: добавляет дополнительные метки ко всем метрикам
     tags:
       application: ${spring.application.name}
+      environment: ${ENVIRONMENT:doker}
       # Добавляет тег "application=auth-service" к каждой метрике.
       # Позволяет в Prometheus фильтровать метрики по сервису.
 
@@ -126,8 +127,32 @@ management:
       # 3. Все сервисы логируют этот TraceId
       # 4. Jaeger собирает все отрезки (Spans) и рисует схему
     propagation:
-      consume: B3
-      produce: B3
+      type: w3c, b3_multi
+      produce: w3c, b3
+
+    # логгирование спанов (для отладки)
+    baggage:
+      enabled: true
+
+    log:
+      slf4j:
+        enabled: true
+
+    # Автоматически добавляет traceId, spanId в MDC
+    # Без этой настройки traceId не попадает в MDC, и Promtail не сможет извлечь его из логов.
+    mdc:
+      enabled: true
+      # Какие поля из трассировки добавлять в MDC
+      fields:
+        - traceId
+        - spanId
+        - parentId
+        - applicationName
+        - instanceId
+      # Формат ключей в MDC (можно оставить как есть)
+      # traceId -> mdc.traceId
+      # spanId -> mdc.spanId
+
   zipkin:
     tracing:
       # Адрес, куда отправлять спаны.
@@ -317,18 +342,34 @@ spring:
           # max-wait: сколько ждать соединение, если пул пуст
           max-wait: -1ms # -1ms = ждать бесконечно
 
+  cloud:
+    gateway:
+      # Включаем propagation заголовков
+      httpclient:
+        wiretap: true  # для отладки
+      # Добавляем фильтр для проброса traceId
+      default-filters:
+        - name: RequestHeaderFilter
+          args:
+            headers:
+              - X-B3-TraceId
+              - X-B3-SpanId
+              - X-B3-ParentSpanId
+              - X-B3-Sampled
+              - X-Request-Id
+
 
 
 # ЛОГИРОВАНИЕ
 
 logging:
   # pattern: формат вывода логов
-  pattern:
+  #pattern:
     # console: формат для вывода в консоль
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [${spring.application.name}] [%thread] %-5level %logger{36} - %msg%n"
+    #console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [${spring.application.name}] [%thread] %-5level %logger{36} - %msg%n"
 
     # file: формат для файла (такой же)
-    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [${spring.application.name}] [%thread] %-5level %logger{36} - %msg%n"
+    #file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [${spring.application.name}] [%thread] %-5level %logger{36} - %msg%n"
 
   # file: настройки файла логов
   file:

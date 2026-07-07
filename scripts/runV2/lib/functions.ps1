@@ -156,7 +156,7 @@ function Check-Monitoring {
     if ($allOk) {
         Write-Success "`n  Все компоненты мониторинга работают!"
     } else {
-        Write-Warning "`n  Некоторые компоненты мониторинга недоступны"
-        Write-Color "    Проверьте логи: docker-compose -f docker-compose.infra.yml logs" $Script:Colors.Info
+        Write-Warning "`n  Некоторые компоненты мониторинга недоступны. "
+        Write-Warning "`n Необходимо дождаться запуска. Через 1 минуту проверьте состояние мониторина "
     }
 }
