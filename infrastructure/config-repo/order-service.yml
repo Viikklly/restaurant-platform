@@ -11,6 +11,16 @@ spring:
     username: postgres
     password: postgres
     driver-class-name: org.postgresql.Driver
+    # Метрики Hikari
+    hikari:
+      pool-name: order-service-pool
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 300000
+      max-lifetime: 1800000
+      register-mbeans: true
+      leak-detection-threshold: 60000
   
   jpa:
     hibernate:
@@ -22,6 +32,27 @@ spring:
     bootstrap-servers: kafka:29092
     consumer:
       group-id: order-group   # Группа для балансировки нагрузки
+
+# Добавляем management Hikari
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    enable:
+      hikaricp: true
+      jdbc: true
+    tags:
+      service: order-service
 
 # специфичны для Order Service
 app:

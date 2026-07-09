@@ -5,6 +5,7 @@ import com.restaurant.auth_service.dto.LoginResponseDTO;
 import com.restaurant.auth_service.dto.RegisterRequestDTO;
 import com.restaurant.auth_service.entity.Role;
 import com.restaurant.auth_service.entity.User;
+import com.restaurant.auth_service.metrics.KafkaMetrics;
 import com.restaurant.auth_service.repository.UserRepository;
 import com.restaurant.auth_service.security.JwtService;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,9 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;              /// Spring Security	Хеширование паролей
     private final JwtService jwtService;                        /// Генерация и валидация JWT
     private final AuthenticationManager authenticationManager;  /// Проверка логина/пароля
+
+
+    private final KafkaMetrics kafkaMetrics;                    /// Kafka метрики
 
     /**
      * Регистрация нового пользователя
@@ -62,6 +67,12 @@ public class AuthService {
         String accessToken = jwtService.generateToken(user);
         String refreshToken = jwtService.generateRefreshToken(user);
 
+
+        /// Kafka Счетчик отправленных сообщений
+        kafkaMetrics.incrementProduced();
+        /// Kafka Cчетчик регистраций
+        kafkaMetrics.incrementRegister();
+
         return new LoginResponseDTO(accessToken, refreshToken);
     }
 
@@ -69,58 +80,73 @@ public class AuthService {
      * Логин пользователя
      */
     public LoginResponseDTO login(LoginRequestDTO request) {
-        log.info("Login999999 attempt for email: {}", request.getEmail());
+        log.info("Попытка входа в систему по email: {}", request.getEmail());
 
-        /// Аутентифицируем пользователя
-        Authentication authentication = authenticationManager.authenticate( /// authenticationManager.authenticate()	Запускает процесс проверки
-                new UsernamePasswordAuthenticationToken(  /// UsernamePasswordAuthenticationToken	Обёртка для email и пароля
-                        request.getEmail(),
-                        request.getPassword()
-                )
-        );
+        try {
+            /// Аутентифицируем пользователя
+            Authentication authentication = authenticationManager.authenticate( /// authenticationManager.authenticate()	Запускает процесс проверки
+                    new UsernamePasswordAuthenticationToken(  /// UsernamePasswordAuthenticationToken	Обёртка для email и пароля
+                            request.getEmail(),
+                            request.getPassword()
+                    )
+            );
 
-        log.info("Login attempt for email11111111111111111: {}", request.getEmail());
+            log.info("Попытка входа в систему по email: {}", request.getEmail());
 
-        /// Получаем пользователя
-        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+            /// Получаем пользователя
+            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+            log.info("Попытка входа в систему по email: {}", request.getEmail());
 
-        log.info("Login attempt for email22222222222222: {}", request.getEmail());
-        /// Генерируем токены
-        String accessToken = jwtService.generateToken(userDetails);
-        log.info("Login attempt for email33333333333333333: {}", request.getEmail());
-        String refreshToken = jwtService.generateRefreshToken(userDetails);
+            /// Генерируем токены
+            String accessToken = jwtService.generateToken(userDetails);
+            log.info("Попытка входа в систему по email: {}", request.getEmail());
 
-        log.info("User logged in successfully: {}", request.getEmail());
 
-        return new LoginResponseDTO(accessToken, refreshToken);
+            String refreshToken = jwtService.generateRefreshToken(userDetails);
+
+            /// Счетчик отправленных сообщений +1
+            kafkaMetrics.incrementProduced();
+            /// Cчетчик входов + 1
+            kafkaMetrics.incrementLogin();
+
+            log.info("Пользователь успешно вошел в систему: {}", request.getEmail());
+
+            return new LoginResponseDTO(accessToken, refreshToken);
+        } catch (Exception e) {
+            // Kafka метрики
+            kafkaMetrics.incrementAuthError();
+
+            log.error("Ошибка входа для {}: {}", request.getEmail(), e.getMessage());
+            throw e;
+        }
     }
 
     /**
      * Обновление access-токена по refresh-токену
      */
     public LoginResponseDTO refreshToken(String refreshToken) {
-        log.info("Refreshing token");
+        log.info("Токен обновлен");
 
         /// Извлекаем email из refresh-токена
         String userEmail = jwtService.extractUsername(refreshToken);
 
         if (userEmail == null) {
-            throw new RuntimeException("Invalid refresh token");
+            throw new RuntimeException("Недействительный refresh token");
         }
 
         /// Загружаем пользователя
         User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new RuntimeException("User не найден"));
 
         /// Проверяем валидность refresh-токена
         if (!jwtService.isTokenValid(refreshToken, user)) {
-            throw new RuntimeException("Invalid refresh token");
+            throw new RuntimeException("Недействительный refresh token");
         }
 
         /// Генерируем новый access-токен
         String newAccessToken = jwtService.generateToken(user);
 
-        log.info("Token refreshed for user: {}", userEmail);
+        log.info("Токен обновлен для user: {}", userEmail);
 
         return new LoginResponseDTO(newAccessToken, refreshToken);
     }

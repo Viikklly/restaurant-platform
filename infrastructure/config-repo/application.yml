@@ -102,6 +102,15 @@ management:
       # Grafana визуализирует эти метрики в красивые графики
 
   metrics:
+    # метрики HIKARI
+    enable:
+      hikaricp: true
+      jdbc: true
+      tomcat: true
+      logback: true
+      system: true
+      process: true
+
     # tags: добавляет дополнительные метки ко всем метрикам
     tags:
       application: ${spring.application.name}

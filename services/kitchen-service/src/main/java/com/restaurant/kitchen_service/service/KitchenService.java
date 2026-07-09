@@ -4,7 +4,9 @@ import com.restaurant.common.events.KitchenOrderReadyEvent;
 import com.restaurant.common.events.OrderPaidEvent;
 import com.restaurant.kitchen_service.entity.Ticket;
 import com.restaurant.kitchen_service.enums.TicketStatusEnum;
+import com.restaurant.kitchen_service.metrics.KafkaMetrics;
 import com.restaurant.kitchen_service.repository.TicketRepository;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,6 +29,8 @@ public class KitchenService {
 
     private final KitchenRedisService redisService; /// REDIS
 
+    private final KafkaMetrics kafkaMetrics;    /// Метрики
+
     @Value("${kitchen.cooking-time-ms:5000}")
     private long cookingTimeMs;
 
@@ -38,26 +42,46 @@ public class KitchenService {
     public void acceptOrder(OrderPaidEvent event) {
         log.info("КУХНЯ: Получен оплаченный заказ #{}", event.getOrderId());
 
-        /// Создаём тикет со статусом OPEN
-        Ticket ticket = Ticket.builder()
-                .orderId(event.getOrderId())
-                .items(event.getOrderItemsList())
-                .status(TicketStatusEnum.OPEN)
-                .build();
-
-        Ticket savedTicket = ticketRepository.save(ticket);
-        log.info("Создан тикет для заказа #{}, статус: {}", ticket.getOrderId(), ticket.getStatus());
-
-        /// Сохраняем в REDIS
-        redisService.cacheTicket(event.getOrderId(), savedTicket);
-
-        /// Отправляем событие, что кухня начала готовить (для статуса PREPARING)
-        kafkaTemplate.send("kitchen-service.cooking.started", event.getOrderId());
-        log.info("Отправлено событие 'kitchen-service.cooking.started' для заказа #{}", event.getOrderId());
+        ///  Запускаем таймер для метрик
+        Timer.Sample timer = kafkaMetrics.startProcessingTimer();
 
 
-        /// Имитируем готовку
-        startCooking(event.getOrderId());
+        try {
+
+            kafkaMetrics.incrementConsumed();       // Метрики полученное сообщение Kafka +1
+            kafkaMetrics.incrementOrderReceived();  // Метрики Заказ принят kafka +1
+
+            /// Создаём тикет со статусом OPEN
+            Ticket ticket = Ticket.builder()
+                    .orderId(event.getOrderId())
+                    .items(event.getOrderItemsList())
+                    .status(TicketStatusEnum.OPEN)
+                    .build();
+
+            Ticket savedTicket = ticketRepository.save(ticket);
+            log.info("Создан тикет для заказа #{}, статус: {}", ticket.getOrderId(), ticket.getStatus());
+
+            /// Сохраняем в REDIS
+            redisService.cacheTicket(event.getOrderId(), savedTicket);
+
+            /// Отправляем событие, что кухня начала готовить (для статуса PREPARING)
+            kafkaTemplate.send("kitchen-service.cooking.started", event.getOrderId());
+            log.info("Отправлено событие 'kitchen-service.cooking.started' для заказа #{}", event.getOrderId());
+
+
+            /// Имитируем готовку
+            startCooking(event.getOrderId());
+        } catch (Exception e) {
+            ///  Метрики ошибка при заказе +1
+            kafkaMetrics.incrementCookingError();
+
+            log.error("Ошибка при принятии заказа #{}", event.getOrderId(), e);
+            throw e;
+
+        } finally {
+            /// Останавливаем таймер для метрик
+            kafkaMetrics.stopProcessingTimer(timer);
+        }
     }
 
     /**
@@ -65,20 +89,37 @@ public class KitchenService {
      */
     @Transactional
     public void startCooking(Long orderId) {
-        Ticket ticket = ticketRepository.findByOrderId(orderId)
-                .orElseThrow(() -> new RuntimeException("Тикет не найден для заказа: " + orderId));
+        log.info("Начало готовки для заказа #{}", orderId);
 
-        ticket.setStatus(TicketStatusEnum.IN_PROGRESS);
 
-        Ticket updatedTicket = ticketRepository.save(ticket);
+        try {
+            Ticket ticket = ticketRepository.findByOrderId(orderId)
+                    .orElseThrow(() -> new RuntimeException("Тикет не найден для заказа: " + orderId));
 
-        log.info("Заказ #{}: статус {} - начали готовить", orderId, ticket.getStatus());
+            ticket.setStatus(TicketStatusEnum.IN_PROGRESS);
 
-        /// Обновляем в REDIS
-        redisService.cacheTicket(orderId, updatedTicket);
+            Ticket updatedTicket = ticketRepository.save(ticket);
 
-        /// Запускаем процесс готовки в отдельном потоке
-        completeCookingAfterDelay(orderId);
+            /// Увеличиваем метрики готовки заказа
+            kafkaMetrics.incrementOrderPreparing();
+
+            log.info("Заказ #{}: статус {} - начали готовить", orderId, ticket.getStatus());
+
+            /// Обновляем в REDIS
+            redisService.cacheTicket(orderId, updatedTicket);
+
+            /// Запускаем процесс готовки в отдельном потоке
+            completeCookingAfterDelay(orderId);
+
+        } catch (Exception e) {
+            /// Увеличиваем метрики ошибка готовки заказа +1
+            kafkaMetrics.incrementCookingError();
+
+            log.error("Ошибка при готовке заказа #{}", orderId, e);
+            throw e;
+        }
+
+
     }
 
     /**
@@ -102,28 +143,45 @@ public class KitchenService {
      */
     @Transactional
     public void completeCooking(Long orderId) {
-        Ticket ticket = ticketRepository.findByOrderId(orderId)
-                .orElseThrow(() -> new RuntimeException("Тикет не найден для заказа: " + orderId));
-
-        ticket.setStatus(TicketStatusEnum.READY);
-
-        Ticket updatedTicket = ticketRepository.save(ticket);
+        log.info("Завершение готовки для заказа #{}", orderId);
 
 
-        /// Обновляем в REDIS
-        redisService.cacheTicket(orderId, updatedTicket);
+        try {
+            Ticket ticket = ticketRepository.findByOrderId(orderId)
+                    .orElseThrow(() -> new RuntimeException("Тикет не найден для заказа: " + orderId));
 
-        log.info(" Заказ #{}: статус {} - готов к выдаче!", orderId, ticket.getStatus());
+            ticket.setStatus(TicketStatusEnum.READY);
 
-        /// ОТПРАВЛЯЕМ СОБЫТИЕ В KAFKA
-        KitchenOrderReadyEvent event = new KitchenOrderReadyEvent(
-                orderId,
-                "ticket-" + orderId,
-                ticket.getItems(),
-                "READY"
-        );
-        kafkaTemplate.send("kitchen-service.order.ready", event);
-        log.info("Отправлено событие KitchenOrderReadyEvent в топик 'kitchen-service.order.ready'");
+            Ticket updatedTicket = ticketRepository.save(ticket);
+
+
+            /// Метрики счетчика готово +1
+            kafkaMetrics.incrementOrderReady();
+            /// Метрики Сообщение отправлено в kafka +1
+            kafkaMetrics.incrementProduced();
+
+
+            /// Обновляем в REDIS
+            redisService.cacheTicket(orderId, updatedTicket);
+
+            log.info(" Заказ #{}: статус {} - готов к выдаче!", orderId, ticket.getStatus());
+
+            /// ОТПРАВЛЯЕМ СОБЫТИЕ В KAFKA
+            KitchenOrderReadyEvent event = new KitchenOrderReadyEvent(
+                    orderId,
+                    "ticket-" + orderId,
+                    ticket.getItems(),
+                    "READY"
+            );
+            kafkaTemplate.send("kitchen-service.order.ready", event);
+            log.info("Отправлено событие KitchenOrderReadyEvent в топик 'kitchen-service.order.ready'");
+        } catch (Exception e) {
+            /// Метрики ошибка готовки заказа +1
+            kafkaMetrics.incrementCookingError();
+
+            log.error("Ошибка при завершении готовки заказа #{}", orderId, e);
+            throw e;
+        }
     }
 
     /**
@@ -134,25 +192,34 @@ public class KitchenService {
     public void cancelOrder(Long orderId) {
         log.info(" КУХНЯ: Получена отмена заказа #{}", orderId);
 
-        Ticket ticket = ticketRepository.findByOrderId(orderId).orElse(null);
-        if (ticket == null) {
-            log.warn("Тикет для заказа #{} не найден", orderId);
-            return;
+
+        try {
+            Ticket ticket = ticketRepository.findByOrderId(orderId).orElse(null);
+            if (ticket == null) {
+                log.warn("Тикет для заказа #{} не найден", orderId);
+                return;
+            }
+
+            if (ticket.getStatus() == TicketStatusEnum.READY) {
+                log.warn("Заказ #{} уже готов, отмена невозможна", orderId);
+                return;
+            }
+
+            ticket.setStatus(TicketStatusEnum.CANCELLED);
+
+            /// Удаляем из REDIS
+            redisService.evictTicket(orderId);
+
+            ticketRepository.save(ticket);
+
+            log.info("Заказ #{}: статус {} - отменён", orderId, ticket.getStatus());
+        } catch (Exception e) {
+            /// Метрики ошибка заказа +1
+            kafkaMetrics.incrementCookingError();
+
+            log.error("Ошибка при отмене заказа #{}", orderId, e);
+            throw e;
         }
-
-        if (ticket.getStatus() == TicketStatusEnum.READY) {
-            log.warn("Заказ #{} уже готов, отмена невозможна", orderId);
-            return;
-        }
-
-        ticket.setStatus(TicketStatusEnum.CANCELLED);
-
-        /// Удаляем из REDIS
-        redisService.evictTicket(orderId);
-
-        ticketRepository.save(ticket);
-
-        log.info("Заказ #{}: статус {} - отменён", orderId, ticket.getStatus());
     }
 
 

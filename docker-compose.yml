@@ -532,12 +532,12 @@ services:
     image: grafana/loki:3.0.0
     container_name: restaurant-loki
     volumes:
-      - ./infrastructure/monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      #- ./infrastructure/monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki-data:/loki
-      - ./infrastructure/monitoring/loki/rules:/loki/rules:ro
+      #- ./infrastructure/monitoring/loki/rules:/loki/rules:ro
     ports:
       - "3100:3100"
-    command: -config.file=/etc/loki/loki-config.yml
+    #command: -config.file=/etc/loki/loki-config.yml
     networks:
       - restaurant-network
     restart: unless-stopped

@@ -96,6 +96,7 @@ public class RedisConfig {
                 .allowIfBaseType(Long.class)
                 .allowIfBaseType(String.class)
                 .allowIfBaseType(Number.class)
+                .allowIfSubType("java.util")
                 .build();
 
         objectMapper.activateDefaultTyping(

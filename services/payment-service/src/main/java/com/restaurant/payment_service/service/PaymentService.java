@@ -11,6 +11,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import com.restaurant.payment_service.metrics.KafkaMetrics;
+import io.micrometer.core.instrument.Timer;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -29,6 +31,8 @@ public class PaymentService {
     private final PaymentTransactionRepository paymentTransactionRepository;
 
     private final RedisService redisService;  /// Redis
+    ///
+    private final KafkaMetrics kafkaMetrics; /// kafka метрики
 
 
     @Value("${payment.max-amount:10000}")
@@ -41,41 +45,69 @@ public class PaymentService {
     public void processPayment(OrderCreatedEvent event) {
         log.info("PaymentService получил событие для заказа #{}", event.getOrderId());
 
-        PaymentProcessedEvent result;
-        String topic;
 
-        /// Сравниваем сумму с лимитом 10000
-        if (event.getTotalAmount().compareTo(maxAmount) < 0) {
-            log.info("Платёж для заказа #{} УСПЕШЕН", event.getOrderId());
-            result = new PaymentProcessedEvent(
-                    event.getOrderId(),
-                    "SUCCESS",
-                    "Платёж одобрен"
-            );
-            topic = "payment-service.payment.success";
-        } else {
-            log.warn("Платёж для заказа #{} ОТКАЗАН (сумма {} >= 10000)",
-                    event.getOrderId(), event.getTotalAmount());
-            result = new PaymentProcessedEvent(
-                    event.getOrderId(),
-                    "FAILED",
-                    "Сумма превышает лимит 10000 руб."
-            );
-            topic = "payment-service.payment.failed";
+        /// Метрики запускаем таймер
+        Timer.Sample timer = kafkaMetrics.startProcessingTimer();
+
+
+        try {
+
+            /// Метрики
+            kafkaMetrics.incrementConsumed();          /// Метрики Полученное сообщение +1
+            kafkaMetrics.incrementPaymentRequested();  /// Метрики Запрос на оплату +1
+
+
+            PaymentProcessedEvent result;
+            String topic;
+
+
+            /// Сравниваем сумму с лимитом 10000
+            if (event.getTotalAmount().compareTo(maxAmount) < 0) {
+                log.info("Платёж для заказа #{} УСПЕШЕН", event.getOrderId());
+
+                /// Метрики
+                kafkaMetrics.incrementPaymentSuccess();   /// Увеличиваем на +1 успешную
+
+                result = new PaymentProcessedEvent(
+                        event.getOrderId(),
+                        "SUCCESS",
+                        "Платёж одобрен"
+                );
+                topic = "payment-service.payment.success";
+            } else {
+                log.warn("Платёж для заказа #{} ОТКАЗАН (сумма {} >= 10000)",
+                        event.getOrderId(), event.getTotalAmount());
+
+                /// Метрики
+                kafkaMetrics.incrementPaymentFailed();   /// увеличиваем на +1 неуспешную метрику
+
+                result = new PaymentProcessedEvent(
+                        event.getOrderId(),
+                        "FAILED",
+                        "Сумма превышает лимит 10000 руб."
+                );
+                topic = "payment-service.payment.failed";
+            }
+
+            /// Сохраняем платеж в БД
+            PaymentTransaction transaction = saveTransaction(event, result);
+
+            /// Сохраняем в Redis кэш
+            cacheTransaction(transaction);
+
+            /// Очищаем кэши списков (так как появилась новая транзакция)
+            clearListCaches(event.getUserId(), event.getOrderId());
+
+            /// Отправляем в соответствующий топик
+            kafkaTemplate.send(topic, result);
+
+            /// Метрики
+            kafkaMetrics.incrementProduced();    /// Увеличиваем счетчик отправленных
+
+            log.info("Результат платежа отправлен в топик '{}'", topic);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
-
-        /// Сохраняем платеж в БД
-        PaymentTransaction transaction = saveTransaction(event, result);
-
-        /// Сохраняем в Redis кэш
-        cacheTransaction(transaction);
-
-        /// Очищаем кэши списков (так как появилась новая транзакция)
-        clearListCaches(event.getUserId(), event.getOrderId());
-
-        /// Отправляем в соответствующий топик
-        kafkaTemplate.send(topic, result);
-        log.info("Результат платежа отправлен в топик '{}'", topic);
     }
 
 

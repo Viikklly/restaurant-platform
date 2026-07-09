@@ -19,8 +19,9 @@ public class OrderCreateRequestDTO implements Serializable {
     /**
      * Идентификатор юзера, который совершает заказ
      */
-    @NotNull(message = "userId не может быть null")
-    private Long userId;
+    /// Берется из заголовка
+    ///@NotNull(message = "userId не может быть null")
+    ///private Long userId;
 
     /**
      * Список блюд, который хочет заказать юзер

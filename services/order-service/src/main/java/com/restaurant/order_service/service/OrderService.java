@@ -11,6 +11,7 @@ import com.restaurant.order_service.entity.Order;
 import com.restaurant.order_service.entity.OrderItem;
 import com.restaurant.order_service.entity.OrderStatus;
 import com.restaurant.order_service.exception.OrderNotFoundException;
+import com.restaurant.order_service.metrics.KafkaMetrics;
 import com.restaurant.order_service.repository.ItemRepository;
 import com.restaurant.order_service.repository.OrderItemRepository;
 import com.restaurant.order_service.repository.OrderRepository;
@@ -22,6 +23,8 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import io.micrometer.core.instrument.Timer;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -42,6 +45,10 @@ public class OrderService {
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
 
+    private final KafkaMetrics kafkaMetrics; /// Метрики
+
+
+
     private static final String TOPIC_ORDER_CREATED = "order-service.order.created";
     private static final String TOPIC_ORDER_PAID = "order-service.order.paid";
     private static final String TOPIC_PAYMENT_SUCCESS = "payment-service.payment.success";
@@ -56,7 +63,8 @@ public class OrderService {
      */
     @Transactional
     public OrderResponseDTO createOrder(OrderCreateRequestDTO request) {
-        log.info("📝 Создание заказа для userId: {}", request.getUserId());
+
+        log.info("Создание заказа для userId: {}", request.getUserId());
 
         ///Проверяем блюда
         Map<String, Item> itemMap = fetchItemsMap(request);
@@ -74,6 +82,10 @@ public class OrderService {
         /// Формируем ответ
         List<String> kitchenItems = prepareKitchenItems(request);
         OrderResponseDTO response = buildResponseDTO(savedOrder, kitchenItems);
+
+        /// Метрики
+        kafkaMetrics.incrementProduced();        /// Отправленное сообщение в Kafka +1
+        kafkaMetrics.incrementOrderCreated();    /// Заказ создан +1
 
         /// Отправляем событие в Kafka
         sendOrderCreatedEvent(savedOrder, kitchenItems);
@@ -284,6 +296,10 @@ public class OrderService {
         );
 
         kafkaTemplate.send(TOPIC_ORDER_PAID, event);
+
+        /// Метрики отправленный заказ +1
+        kafkaMetrics.incrementProduced();
+
         log.info(" Событие OrderPaid отправлено в топик '{}'", TOPIC_ORDER_PAID);
     }
 
@@ -298,8 +314,17 @@ public class OrderService {
     @Transactional
     @CacheEvict(value = {"orders", "orderItems"}, key = "#event.orderId")
     public void handlePaymentSuccess(PaymentProcessedEvent event) {
+
+        /// Метрики запускаем таймер
+        Timer.Sample timer = kafkaMetrics.startProcessingTimer();
+
+
         try {
             log.info(" Получен SUCCESS для заказа #{}", event.getOrderId());
+
+            /// Метрики
+            kafkaMetrics.incrementConsumed();     /// Метрики Полученное сообщение +1
+            kafkaMetrics.incrementOrderPaid();    /// Метрики Заказ оплачен +1
 
             Order order = getOrderEntity(event.getOrderId());
             order.setStatus(OrderStatus.PAID.name());
@@ -312,8 +337,17 @@ public class OrderService {
 
         } catch (OrderNotFoundException e) {
             log.error("Заказ #{} не найден при обработке оплаты", event.getOrderId());
+
+            /// Метрики ошибка +1
+            kafkaMetrics.incrementProcessingError();
         } catch (Exception e) {
             log.error("Ошибка обработки оплаты заказа #{}", event.getOrderId(), e);
+
+            /// Метрики ошибка +1
+            kafkaMetrics.incrementProcessingError();
+        } finally {
+            /// Метрики, останавливаем таймер
+            kafkaMetrics.stopProcessingTimer(timer);
         }
     }
 
@@ -326,8 +360,18 @@ public class OrderService {
     @Transactional
     @CacheEvict(value = {"orders", "orderItems"}, key = "#event.orderId")
     public void handlePaymentFailed(PaymentProcessedEvent event) {
+
+        /// Метрики, включаем таймер
+
+        Timer.Sample timer = kafkaMetrics.startProcessingTimer();
+
         try {
             log.info(" Получен FAILED для заказа #{}: {}", event.getOrderId(), event.getMessage());
+
+
+            /// Метрики
+            kafkaMetrics.incrementConsumed();                /// Метрики Полученное сообщение +1
+            kafkaMetrics.incrementOrderCancelled();          /// Метрики Заказ отменен +1
 
             Order order = getOrderEntity(event.getOrderId());
             order.setStatus(OrderStatus.CANCELLED.name());
@@ -337,8 +381,17 @@ public class OrderService {
 
         } catch (OrderNotFoundException e) {
             log.error(" Заказ #{} не найден при обработке отмены", event.getOrderId());
+
+            /// Метрики ошибка +1
+            kafkaMetrics.incrementProcessingError();
         } catch (Exception e) {
             log.error(" Ошибка обработки отмены заказа #{}", event.getOrderId(), e);
+
+            /// Метрики ошибка +1
+            kafkaMetrics.incrementProcessingError();
+        } finally {
+            /// Метрики выключам таймер
+            kafkaMetrics.stopProcessingTimer(timer);
         }
     }
 
@@ -350,8 +403,16 @@ public class OrderService {
     @Transactional
     @CacheEvict(value = {"orders", "orderItems"}, key = "#orderId")
     public void handleCookingStarted(Long orderId) {
+
+        /// Метрики включаем таймер
+        Timer.Sample timer = kafkaMetrics.startProcessingTimer();
+
         try {
             log.info("Кухня начала готовить заказ #{}", orderId);
+
+
+            /// Метрики
+            kafkaMetrics.incrementConsumed();   /// Метрики Полученное сообщение +1
 
             Order order = getOrderEntity(orderId);
             order.setStatus(OrderStatus.PREPARING.name());
@@ -361,8 +422,17 @@ public class OrderService {
 
         } catch (OrderNotFoundException e) {
             log.error("Заказ #{} не найден при начале готовки", orderId);
+
+            /// Метрики ошибка +1
+            kafkaMetrics.incrementProcessingError();
         } catch (Exception e) {
             log.error("Ошибка обработки начала готовки заказа #{}", orderId, e);
+
+            /// Метрики ошибка +1
+            kafkaMetrics.incrementProcessingError();
+        } finally {
+            /// Метрики таймер остановлен
+            kafkaMetrics.stopProcessingTimer(timer);
         }
     }
 
@@ -374,9 +444,19 @@ public class OrderService {
     @Transactional
     @CacheEvict(value = {"orders", "orderItems"}, key = "#event.orderId")
     public void handleOrderReady(KitchenOrderReadyEvent event) {
+
+        /// Метрики запускаем таймер
+        Timer.Sample timer = kafkaMetrics.startProcessingTimer();
+
+
         try {
 
            log.info("Заказ #{} готов к выдаче!", event.getOrderId());
+
+           /// Метрики
+            kafkaMetrics.incrementConsumed();           /// Метрики Полученное сообщение +1
+            kafkaMetrics.incrementOrderReady();         /// Метрики Заказ готов +1
+
 
             Order order = getOrderEntity(event.getOrderId());
             order.setStatus(OrderStatus.READY.name());
@@ -388,8 +468,17 @@ public class OrderService {
 
         } catch (OrderNotFoundException e) {
             log.error("Заказ #{} не найден при получении статуса READY", event.getOrderId());
+
+            /// Метрики ошибка +1
+            kafkaMetrics.incrementProcessingError();
         } catch (Exception e) {
             log.error("Ошибка обработки готовности заказа #{}", event.getOrderId(), e);
+
+            /// Метрики ошибка +1
+            kafkaMetrics.incrementProcessingError();
+        } finally {
+            /// Метрики остановливаем таймер
+            kafkaMetrics.stopProcessingTimer(timer);
         }
     }
 
@@ -401,8 +490,15 @@ public class OrderService {
     @Transactional
     @CacheEvict(value = {"orders", "orderItems"}, key = "#orderId")
     public void handleOrderDelivered(Long orderId) {
+
+        /// Метрики запускаем таймер
+        Timer.Sample timer = kafkaMetrics.startProcessingTimer();
+
         try {
             log.info("Заказ #{} доставлен клиенту!", orderId);
+
+            /// Метрики
+            kafkaMetrics.incrementConsumed();  ///  Метрики Полученное сообщение
 
             Order order = getOrderEntity(orderId);
             order.setStatus(OrderStatus.DELIVERED.name());
@@ -413,8 +509,17 @@ public class OrderService {
 
         } catch (OrderNotFoundException e) {
             log.error("Заказ #{} не найден при доставке", orderId);
+
+            /// Метрики ошибка +1
+            kafkaMetrics.incrementProcessingError();
         } catch (Exception e) {
             log.error("Ошибка обработки доставки заказа #{}", orderId, e);
+
+            /// Метрики ошибка +1
+            kafkaMetrics.incrementProcessingError();
+        }finally {
+            /// Метрики Остановливаем таймер
+            kafkaMetrics.stopProcessingTimer(timer);
         }
     }
 }
