@@ -24,23 +24,23 @@ public class CorrelationIdFilter implements WebFilter {
         ServerHttpRequest request = exchange.getRequest();
         ServerHttpResponse response = exchange.getResponse();
 
-        // Получаем correlationId из заголовка
+        /// Получаем correlationId из заголовка
         String correlationId = request.getHeaders().getFirst(CORRELATION_ID_HEADER);
 
-        // Если нет — генерируем новый
+        /// Если нет — генерируем новый
         if (correlationId == null || correlationId.isEmpty()) {
             correlationId = UUID.randomUUID().toString();
         }
 
-        // Кладем в MDC (для логирования)
+        /// Кладем в MDC (для логирования)
         MDC.put(CORRELATION_ID_MDC, correlationId);
 
-        // Добавляем заголовок в запрос для дальнейшего проброса
+        /// Добавляем заголовок в запрос для дальнейшего проброса
         ServerHttpRequest mutatedRequest = request.mutate()
                 .header(CORRELATION_ID_HEADER, correlationId)
                 .build();
 
-        // Добавляем заголовок в ответ
+        /// Добавляем заголовок в ответ
         response.getHeaders().add(CORRELATION_ID_HEADER, correlationId);
 
         // Продолжаем обработку

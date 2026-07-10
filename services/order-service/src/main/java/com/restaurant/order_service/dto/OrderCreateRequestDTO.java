@@ -1,13 +1,11 @@
 package com.restaurant.order_service.dto;
 
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.io.Serializable;
-import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -20,8 +18,8 @@ public class OrderCreateRequestDTO implements Serializable {
      * Идентификатор юзера, который совершает заказ
      */
     /// Берется из заголовка
-    ///@NotNull(message = "userId не может быть null")
-    ///private Long userId;
+    @NotNull(message = "userId не может быть null")
+    private Long userId;
 
     /**
      * Список блюд, который хочет заказать юзер
@@ -31,7 +29,7 @@ public class OrderCreateRequestDTO implements Serializable {
     private List<ItemRequestDTO> items;
 
     @Data
-    public static class ItemRequestDTO {
+    public static class ItemRequestDTO implements Serializable {
         private String productName;
         private Integer quantity;
     }

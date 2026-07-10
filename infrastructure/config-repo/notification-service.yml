@@ -95,6 +95,3 @@ logging:
 #  НЕТ spring.kafka.producer
 #    - Notification Service НИЧЕГО НЕ ОТПРАВЛЯЕТ в Kafka
 #    - Он только получает сообщения (consumer)
-
-
-                                                              приложение

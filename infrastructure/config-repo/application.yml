@@ -411,4 +411,13 @@ logging:
     # spring-kafka: логи Kafka (сообщения, консьюмеры)
     org.springframework.kafka: INFO
 
+  # Настройки для @Async
+  task:
+    execution:
+      pool:
+        core-size: 5
+        max-size: 15
+        queue-capacity: 100
+      thread-name-prefix: kitchen-
+
 
