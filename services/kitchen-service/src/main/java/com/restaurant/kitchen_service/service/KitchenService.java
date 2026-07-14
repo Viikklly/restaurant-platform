@@ -318,6 +318,7 @@ public class KitchenService {
     }
 
 
+    /// Откат готовки для заказа
     @Transactional
     public void rollbackCooking(Long orderId) {
         log.info("Откат готовки для заказа #{}", orderId);
@@ -357,10 +358,6 @@ public class KitchenService {
     }
 
 
-
-
-
-
     /**
      * Получить все тикеты
      */
@@ -374,29 +371,10 @@ public class KitchenService {
      * Получить тикет по ID заказа
      */
     @Transactional(readOnly = true)
-    public Ticket getTicketByOrderId(Long orderId) {
-        log.info("Получение тикета по заказу: {}", orderId);
-
-        /// Сначала проверяем REDIS
-        Optional<Object> cachedTicket = redisService.getCachedTicket(orderId);
-        if (cachedTicket.isPresent()) {
-            try {
-                return (Ticket) cachedTicket.get();
-            } catch (ClassCastException e) {
-                log.error("Ошибка приведения типа для orderId: {}", orderId, e);
-                redisService.evictTicket(orderId);          /// Очищаем битые данные
-            }
-        }
-
-        /// Если нет в REDIS - идём в БД
-        log.info("Тикет для заказа #{} не найден в Redis, загружаем из БД", orderId);
-        Ticket ticket = ticketRepository.findByOrderId(orderId)
-                .orElseThrow(() -> new RuntimeException("Тикет не найден для заказа: " + orderId));
-
-        /// Сохраняем в REDIS
-        cacheTicketSafe(orderId, ticket);
-
-        return ticket;
+    public List<String> getItemsListForOrderId(Long orderId) {
+        log.info("Получение списка блюд для заказа #{}", orderId);
+        Ticket ticket = getTicketByOrderId(orderId);
+        return ticket.getItems();
     }
 
     /**
@@ -446,7 +424,7 @@ public class KitchenService {
     }
 
     /**
-     * Получить список блюд тикета
+     *  Получить список блюд по ID тикета
      */
         public List<String> getItemsListForTicketId(Long ticketId) {
             log.info("Получение списка блюд для тикета #{}", ticketId);
@@ -478,5 +456,31 @@ public class KitchenService {
         }
     }
 
+
+    @Transactional(readOnly = true)
+    public Ticket getTicketByOrderId(Long orderId) {
+        log.info("Получение тикета по заказу: {}", orderId);
+
+        /// Проверяем REDIS
+        Optional<Object> cachedTicket = redisService.getCachedTicket(orderId);
+        if (cachedTicket.isPresent()) {
+            try {
+                return (Ticket) cachedTicket.get();
+            } catch (ClassCastException e) {
+                log.error("Ошибка приведения типа для orderId: {}", orderId, e);
+                redisService.evictTicket(orderId);
+            }
+        }
+
+        /// Загружаем из БД
+        log.info("Тикет для заказа #{} не найден в Redis, загружаем из БД", orderId);
+        Ticket ticket = ticketRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new RuntimeException("Тикет не найден для заказа: " + orderId));
+
+        /// Сохраняем в REDIS
+        cacheTicketSafe(orderId, ticket);
+
+        return ticket;
+    }
 
 }

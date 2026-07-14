@@ -41,7 +41,7 @@ public class KitchenController {
     /**
      * Получить тикет по ID заказа
      */
-    @GetMapping("/tickets/order/{orderId}")
+    @GetMapping("/tickets/order/{orderId}/items")
     public ResponseEntity<Ticket> getTicketByOrderId(@PathVariable Long orderId) {
         log.info("GET /api/kitchen/tickets/order/{}", orderId);
         return ResponseEntity.ok(kitchenService.getTicketByOrderId(orderId));
@@ -86,11 +86,11 @@ public class KitchenController {
     }
 
     /**
-     * Получить список блюд по ID заказа
+     * Получить список блюд по ID тикета
      */
-    @GetMapping("/tickets/order/items/{orderId}")
-    public ResponseEntity<List<String>> getItemsListForTicketId(@PathVariable Long orderId) {
-        log.info("GET /api/kitchen/tickets/order/items/{}", orderId);
-        return ResponseEntity.ok(kitchenService.getItemsListForTicketId(orderId));
+    @GetMapping("/tickets/{ticketId}/items")
+    public ResponseEntity<List<String>> getItemsListByTicketId(@PathVariable Long ticketId) {
+        log.info("GET /api/kitchen/tickets/{}/items", ticketId);
+        return ResponseEntity.ok(kitchenService.getItemsListForTicketId(ticketId));
     }
 }
