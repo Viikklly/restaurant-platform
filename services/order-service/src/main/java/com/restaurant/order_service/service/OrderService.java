@@ -17,6 +17,7 @@ import com.restaurant.order_service.repository.OrderItemRepository;
 import com.restaurant.order_service.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -44,7 +45,7 @@ public class OrderService {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
-
+    @Autowired
     private final KafkaMetrics kafkaMetrics; /// Метрики
 
 
