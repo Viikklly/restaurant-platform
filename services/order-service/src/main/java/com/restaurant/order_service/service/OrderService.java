@@ -17,6 +17,7 @@ import com.restaurant.order_service.repository.OrderItemRepository;
 import com.restaurant.order_service.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -44,7 +45,7 @@ public class OrderService {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
-
+    @Autowired
     private final KafkaMetrics kafkaMetrics; /// Метрики
 
 
@@ -65,6 +66,11 @@ public class OrderService {
     public OrderResponseDTO createOrder(OrderCreateRequestDTO request) {
 
         log.info("Создание заказа для userId: {}", request.getUserId());
+
+        ///проверка на пустой список
+        if (request.getItems() == null || request.getItems().isEmpty()) {
+            throw new RuntimeException("Список блюд не может быть пустым");
+        }
 
         ///Проверяем блюда
         Map<String, Item> itemMap = fetchItemsMap(request);

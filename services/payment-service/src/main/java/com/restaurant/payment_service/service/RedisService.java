@@ -44,14 +44,14 @@ public class RedisService {
     /**
      * Получить объект из кэша с приведением типа
      */
-    @SuppressWarnings("unchecked")
     public <T> T get(String key, Class<T> type) {
         Object value = get(key);
         if (value == null) {
             return null;
         }
         try {
-            return (T) value;
+            /// используем type.cast() вместо (T) value
+            return type.cast(value);
         } catch (ClassCastException e) {
             log.warn("Не удалось привести объект к типу {} для ключа '{}'",
                     type.getSimpleName(), key);
@@ -71,13 +71,26 @@ public class RedisService {
         try {
             if (value instanceof java.util.List<?>) {
                 java.util.List<?> list = (java.util.List<?>) value;
-                if (!list.isEmpty()) {
-                    Object first = list.get(0);
-                    if (elementType.isInstance(first)) {
-                        return (java.util.List<T>) list;
-                    }
+
+                /// Если список пустой - возвращаем его
+                if (list.isEmpty()) {
+                    return (java.util.List<T>) list;
                 }
-                return (java.util.List<T>) list;
+
+                /// Проверяем, что первый элемент имеет правильный тип
+                /// elementType.cast() для проверки
+                Object first = list.get(0);
+                try {
+                    /// Пытаемся привести первый элемент к нужному типу
+                    elementType.cast(first);
+                    /// Если успешно - возвращаем список
+                    return (java.util.List<T>) list;
+                } catch (ClassCastException e) {
+                    /// Если первый элемент не того типа - возвращаем null
+                    log.warn("Элемент списка не соответствует типу {} для ключа '{}'",
+                            elementType.getSimpleName(), key);
+                    return null;
+                }
             }
             return null;
         } catch (ClassCastException e) {
@@ -86,6 +99,8 @@ public class RedisService {
             return null;
         }
     }
+
+
 
     /**
      * Удалить ключ из кэша

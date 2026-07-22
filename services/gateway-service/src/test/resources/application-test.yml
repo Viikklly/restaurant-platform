@@ -1,0 +1,29 @@
+
+spring:
+  cloud:
+    config:
+      enabled: false
+    discovery:
+      enabled: false
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ""
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
+app:
+  gateway:
+    jwt-filter-enabled: true
+
+logging:
+  level:
+    com.restaurant.gateway_service: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.cloud.gateway: DEBUG

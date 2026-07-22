@@ -37,6 +37,14 @@ public class ItemService {
     }
 
     /**
+     * Получение доступных блюд
+     */
+    public List<Item> getAvailableItems() {
+        log.info("Получение доступных блюд");
+        return itemRepository.findByIsAvailableTrue();
+    }
+
+    /**
      * Найти блюдо по названию
      */
     @Transactional(readOnly = true)

@@ -18,14 +18,25 @@ public class ItemController {
     private final ItemService itemService;
 
     @GetMapping
-    public ResponseEntity<List<Item>> getAllItems() {
-        log.info("GET /api/items");
+    public ResponseEntity<List<Item>> getAllItems(
+            @RequestParam(required = false) Boolean available) {
+        log.info("GET /api/items, available={}", available);
+
+        if (Boolean.TRUE.equals(available)) {
+            return ResponseEntity.ok(itemService.getAvailableItems());
+        }
         return ResponseEntity.ok(itemService.getAllItems());
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<Item> getItem(@PathVariable Long id) {
         log.info("GET /api/items/{}", id);
-        return ResponseEntity.ok(itemService.getItemById(id));
+        try {
+            Item item = itemService.getItemById(id);
+            return ResponseEntity.ok(item);
+        } catch (RuntimeException e) {
+            log.warn("Блюдо не найдено: {}", id);
+            return ResponseEntity.notFound().build();
+        }
     }
 }

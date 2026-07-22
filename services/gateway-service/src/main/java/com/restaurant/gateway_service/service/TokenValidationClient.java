@@ -1,6 +1,5 @@
 package com.restaurant.gateway_service.service;
 
-
 import com.restaurant.gateway_service.model.AuthRequest;
 import com.restaurant.gateway_service.model.AuthResponse;
 import lombok.RequiredArgsConstructor;
@@ -13,7 +12,6 @@ import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 
 import java.time.Duration;
-
 
 /**
  * HTTP-клиент для валидации JWT-токенов через вызов AUTH-SERVICE.
@@ -46,18 +44,35 @@ public class TokenValidationClient {
                 .onStatus(                                  /// Проверяем, является ли статус ошибкой (4xx или 5xx)
                         status -> status.is4xxClientError() || status.is5xxServerError(),
                         clientResponse -> {
-                            log.error("Auth service returned error: {}", clientResponse.statusCode());
                             if (clientResponse.statusCode() == HttpStatus.UNAUTHORIZED) {
+                                log.warn("Token validation failed: Unauthorized");
+                                // ВАЖНО: возвращаем Mono.error с RuntimeException("Invalid token")
                                 return Mono.error(new RuntimeException("Invalid token"));
                             }
-                            return Mono.error(new RuntimeException("Auth service error: " + clientResponse.statusCode()));
+                            log.error("Auth service returned error: {}", clientResponse.statusCode());
+                            return clientResponse.bodyToMono(String.class)
+                                    .flatMap(body -> Mono.error(new RuntimeException(
+                                            "Auth service error: " + clientResponse.statusCode() + " - " + body)));
                         }
                 )
                 .bodyToMono(AuthResponse.class)                     /// Превращаем JSON ответ в объект AuthResponse
                 .retryWhen(Retry.backoff(3, Duration.ofMillis(500))                     /// Максимум попыток 3	Начальная задержка 0.5 секунды
-                        .filter(throwable -> throwable instanceof WebClientResponseException.ServiceUnavailable
-                                || throwable instanceof java.net.ConnectException))
+                        .filter(throwable -> {
+                            if (throwable instanceof WebClientResponseException) {
+                                WebClientResponseException ex = (WebClientResponseException) throwable;
+                                return ex.getStatusCode() == HttpStatus.SERVICE_UNAVAILABLE;
+                            }
+                            return throwable instanceof java.net.ConnectException;
+                        })
+                        .doBeforeRetry(retrySignal ->
+                                log.warn("Retrying token validation, attempt: {}",
+                                        retrySignal.totalRetriesInARow() + 1)))  /// Логируем попытки повторных запросов
                 .doOnSuccess(response -> log.debug("Token validation successful for user: {}", response.getUserId()))   /// При успешном ответе логируем userId
-                .doOnError(error -> log.error("Token validation failed: {}", error.getMessage()));                          /// При любой ошибке логируем
+                .doOnError(error -> {
+                    // При любой ошибке логируем, но не логируем как ошибку "Invalid token" (это ожидаемое поведение)
+                    if (!(error instanceof RuntimeException && "Invalid token".equals(error.getMessage()))) {
+                        log.error("Token validation failed: {}", error.getMessage());
+                    }
+                });
     }
 }

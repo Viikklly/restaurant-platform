@@ -4,4 +4,8 @@ public class OrderNotFoundException extends RuntimeException {
     public OrderNotFoundException(Long orderId) {
         super("Заказ не найден: " + orderId);
     }
+
+    public OrderNotFoundException(String message) {
+        super(message);
+    }
 }

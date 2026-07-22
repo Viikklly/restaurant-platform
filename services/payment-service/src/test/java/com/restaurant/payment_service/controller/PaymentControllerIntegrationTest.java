@@ -5,6 +5,7 @@ import com.restaurant.payment_service.entity.PaymentTransaction;
 import com.restaurant.payment_service.repository.PaymentTransactionRepository;
 import com.restaurant.payment_service.service.RedisService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -96,7 +97,7 @@ class PaymentControllerIntegrationTest {
         baseUrl = "http://localhost:" + port + "/api/payments";
     }
 
-    /// Упрощает создание тестовых данных
+    /// Создание транзакции
     private PaymentTransaction createTransaction(Long orderId, Long userId,
                                                  BigDecimal amount, String status) {
         return PaymentTransaction.builder()
@@ -111,6 +112,7 @@ class PaymentControllerIntegrationTest {
 
     /// Пустой список
     @Test
+    @DisplayName("GET /api/payments - должен вернуть пустой список, когда транзакций нет")
     void getAllTransactions_ShouldReturnEmptyList() {
         ResponseEntity<List<PaymentTransaction>> response = restTemplate.exchange(
                 baseUrl,                    /// URL
@@ -130,6 +132,7 @@ class PaymentControllerIntegrationTest {
 
     /// Список всех транзакций
     @Test
+    @DisplayName("GET /api/payments - должен вернуть все сохраненные транзакции")
     void getAllTransactions_ShouldReturnAllTransactions() {
         /// Создаем две транзакции в БД
         PaymentTransaction tx1 = createTransaction(1001L, 2001L,
@@ -163,6 +166,7 @@ class PaymentControllerIntegrationTest {
 
     /// Успешная транзакция
     @Test
+    @DisplayName("GET /api/payments/{id} - должен вернуть транзакцию по существующему ID")
     void getTransactionById_ShouldReturnTransaction() {
         BigDecimal amount = BigDecimal.valueOf(7000);
         /// Создаем транзакцию
@@ -195,6 +199,7 @@ class PaymentControllerIntegrationTest {
 
     /// Не найден
     @Test
+    @DisplayName("GET /api/payments/{id} - должен вернуть ошибку 500 для несуществующего ID")
     void getTransactionById_ShouldThrowExceptionWhenNotFound() {
         ResponseEntity<PaymentTransaction> response = restTemplate.getForEntity(
                 baseUrl + "/99999",
@@ -207,6 +212,7 @@ class PaymentControllerIntegrationTest {
 
     /// Успешное получения списка транзакций по ID заказа
     @Test
+    @DisplayName("GET /api/payments/order/{orderId} - должен вернуть все транзакции по ID заказа")
     void getTransactionsByOrderId_ShouldReturnTransactions() {
         /// Создаем две тестовые транзакции с одинаковым orderId (1004)
         Long orderId = 1004L;
@@ -237,6 +243,7 @@ class PaymentControllerIntegrationTest {
 
     /// Для ID заказа не найдено ни одной транзакции
     @Test
+    @DisplayName("GET /api/payments/order/{orderId} - должен вернуть пустой список, если транзакций для заказа нет")
     void getTransactionsByOrderId_ShouldReturnEmptyList() {
         /// Запрос
         ResponseEntity<List<PaymentTransaction>> response = restTemplate.exchange(
@@ -254,6 +261,7 @@ class PaymentControllerIntegrationTest {
 
     /// Получение списка транзакций по ID пользователя
     @Test
+    @DisplayName("GET /api/payments/user/{userId} - должен вернуть все транзакции по ID пользователя")
     void getTransactionsByUserId_ShouldReturnTransactions() {
         // Создаем 2 транзакции с userId 2005
         Long userId = 2005L;
@@ -302,6 +310,7 @@ class PaymentControllerIntegrationTest {
 
     /// Для user ID не найдено транзакций
     @Test
+    @DisplayName("GET /api/payments/user/{userId} - должен вернуть пустой список, если транзакций для пользователя нет")
     void getTransactionsByUserId_ShouldReturnEmptyList() {
 
         Long nonExistentUserId = 88888L;
@@ -328,6 +337,7 @@ class PaymentControllerIntegrationTest {
 
     /// Получение транзакции по ID
     @Test
+    @DisplayName("GET /api/payments/{id} - должен вернуть транзакцию со всеми заполненными полями")
     void getTransactionById_ShouldReturnAllFields() {
         /// Создаем транзакцию
         Long orderId = 7777L;
@@ -375,6 +385,7 @@ class PaymentControllerIntegrationTest {
     /// Проверка кэширования
 
     @Test
+    @DisplayName("GET /api/payments - при повторном вызове данные должны браться из кэша Redis")
     void getAllTransactions_ShouldUseCacheOnSecondCall() {
         // Создаем данные
         PaymentTransaction tx = createTransaction(9999L, 8888L,
