@@ -6,3 +6,5 @@
 /.idea/modules.xml
 /.idea/restaurant-platform.iml
 /.idea/vcs.xml
+services/auth-service/logs/app.log
+services/gateway-service/logs/app.log
