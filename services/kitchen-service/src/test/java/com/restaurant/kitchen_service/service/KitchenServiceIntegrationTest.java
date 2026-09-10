@@ -62,6 +62,8 @@ class KitchenServiceIntegrationTest {
     @MockitoBean
     private Timer.Sample timerSample;
 
+    /// CookingProcessor НЕ мокаем — используем реальный бин!
+
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
             .withDatabaseName("kitchen_test")
@@ -101,7 +103,7 @@ class KitchenServiceIntegrationTest {
         cacheManager.getCacheNames().stream()
                 .forEach(name -> cacheManager.getCache(name).clear());
 
-        // Очищаем Redis
+        /// Очищаем Redis
         redisService.evictTicket(1L);
         redisService.evictTicket(2L);
         redisService.evictTicket(3L);

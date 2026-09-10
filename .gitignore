@@ -8,3 +8,5 @@
 /.idea/vcs.xml
 services/auth-service/logs/app.log
 services/gateway-service/logs/app.log
+/services/gateway-service/logs/
+/services/auth-service/logs/

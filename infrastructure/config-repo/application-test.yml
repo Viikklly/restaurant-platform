@@ -43,3 +43,7 @@ eureka:
 logging:
   level:
     com.restaurant: DEBUG
+
+app:
+  gateway:
+    jwt-filter-enabled: false

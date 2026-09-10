@@ -35,6 +35,9 @@ public class KitchenService {
 
     private final KafkaMetrics kafkaMetrics;    /// Метрики
 
+    /// отдельный бин для транзакций
+    private final CookingProcessor cookingProcessor;
+
     @Value("${kitchen.cooking-time-ms:5000}")
     private long cookingTimeMs;
 
@@ -67,7 +70,9 @@ public class KitchenService {
                     .status(TicketStatusEnum.OPEN)
                     .build();
 
-            Ticket savedTicket = ticketRepository.save(ticket);
+
+            // Сохраняем через cookingProcessor
+            Ticket savedTicket = cookingProcessor.saveTicket(ticket);
             log.info("Создан тикет для заказа #{}, статус: {}", ticket.getOrderId(), ticket.getStatus());
 
             /// Сохраняем в REDIS
@@ -98,22 +103,14 @@ public class KitchenService {
     /**
      * Завершаем готовку (IN_PROGRESS → READY) и отправляем событие
      */
-    @Transactional
     public void completeCooking(Long orderId) {
         log.info("Завершение готовки для заказа #{}", orderId);
 
 
         try {
-            Ticket ticket = ticketRepository.findByOrderId(orderId)
-                    .orElseThrow(() -> new RuntimeException("Тикет не найден для заказа: " + orderId));
+            /// Вызов через cookingProcessor
+            Ticket updatedTicket = cookingProcessor.completeCooking(orderId);
 
-            ticket.setStatus(TicketStatusEnum.READY);
-
-            Ticket updatedTicket = ticketRepository.save(ticket);
-
-
-            /// Метрики счетчика готово +1
-            kafkaMetrics.incrementOrderReady();
             /// Метрики Сообщение отправлено в kafka +1
             kafkaMetrics.incrementProduced();
 
@@ -121,13 +118,13 @@ public class KitchenService {
             /// Обновляем в REDIS
             cacheTicketSafe(orderId, updatedTicket);
 
-            log.info(" Заказ #{}: статус {} - готов к выдаче!", orderId, ticket.getStatus());
+            log.info(" Заказ #{}: статус {} - готов к выдаче!", orderId, updatedTicket.getStatus());
 
             /// ОТПРАВЛЯЕМ СОБЫТИЕ В KAFKA
             KitchenOrderReadyEvent event = new KitchenOrderReadyEvent(
                     orderId,
                     "ticket-" + orderId,
-                    ticket.getItems(),
+                    updatedTicket.getItems(),
                     "READY"
             );
             kafkaTemplate.send("kitchen-service.order.ready", event);
@@ -145,43 +142,19 @@ public class KitchenService {
      *  Отмена заказа
      */
     @KafkaListener(topics = "order-service.order.cancelled", groupId = "kitchen-group")
-    @Transactional
     public void cancelOrder(Long orderId) {
-        log.info(" КУХНЯ: Получена отмена заказа #{}", orderId);
-
+        log.info("КУХНЯ: Получена отмена заказа #{}", orderId);
 
         try {
-            Ticket ticket = ticketRepository.findByOrderId(orderId).orElse(null);
-            if (ticket == null) {
-                log.warn("Тикет для заказа #{} не найден", orderId);
-                return;
+            /// Вызов через cookingProcessor
+            boolean cancelled = cookingProcessor.cancelTicket(orderId);
+
+            if (cancelled) {
+                kafkaTemplate.send("kitchen-service.order.cancelled", orderId);
+                log.info("Отправлено событие об отмене заказа #{}", orderId);
             }
-
-            if (ticket.getStatus() == TicketStatusEnum.READY) {
-                log.warn("Заказ #{} уже готов, отмена невозможна", orderId);
-                return;
-            }
-
-            ticket.setStatus(TicketStatusEnum.CANCELLED);
-
-
-            ticketRepository.save(ticket);
-
-
-            /// Удаляем из REDIS
-            redisService.evictTicket(orderId);
-
-            /// Отправляем событие об отмене
-            kafkaTemplate.send("kitchen-service.order.cancelled", orderId);
-            log.info(" Отправлено событие об отмене заказа #{}", orderId);
-
-            log.info("Заказ #{}: статус {} - отменён", orderId, ticket.getStatus());
-
-
         } catch (Exception e) {
-            /// Метрики ошибка заказа +1
             kafkaMetrics.incrementCookingError();
-
             log.error("Ошибка при отмене заказа #{}", orderId, e);
             throw e;
         }
@@ -194,36 +167,40 @@ public class KitchenService {
     @Async("kitchenExecutor")
     ///@Transactional(propagation = Propagation.REQUIRES_NEW)
     public void startCookingAsync(Long orderId) {
-
-        log.info("Начало готовки для заказа #{} (поток: {})", orderId, Thread.currentThread().getName());
-
+        log.info("Начало готовки для заказа #{} (поток: {})",
+                orderId, Thread.currentThread().getName());
 
         try {
+            ///Вызов через cookingProcessor
+            Ticket ticket = cookingProcessor.updateTicketStatus(
+                    orderId,
+                    TicketStatusEnum.IN_PROGRESS
+            );
 
-            /// Вынесли транзакционные методы в отдельный метод
-            Ticket ticket = updateTicketStatusTransactional(orderId, TicketStatusEnum.IN_PROGRESS);
-
-            if (ticket == null) {
-                log.info("Заказ #{} пустой, готовка не требуется", orderId);
+            /// Если тикет сразу READY (нет блюд) — отправляем событие
+            if (ticket.getStatus() == TicketStatusEnum.READY) {
+                log.info("Заказ #{} без блюд, сразу отправляем READY", orderId);
+                completeCooking(orderId);
                 return;
             }
 
             kafkaMetrics.incrementOrderPreparing();
             log.info("Заказ #{}: статус {} - начали готовить", orderId, ticket.getStatus());
 
-            /// Готовим каждое блюдо по очереди
+            // Готовим каждое блюдо
             cookDishes(orderId, ticket.getItems());
 
-            /// Завершаем заказ
+            // Завершаем заказ
             completeCooking(orderId);
 
         } catch (Exception e) {
             kafkaMetrics.incrementCookingError();
             log.error("Ошибка при старте готовки заказа #{}", orderId, e);
+            /// Откат через cookingProcessor
+            cookingProcessor.rollbackCooking(orderId);
             throw new RuntimeException("Ошибка при готовке заказа " + orderId, e);
         }
     }
-
 
 
     /**
@@ -257,90 +234,6 @@ public class KitchenService {
         }
 
         log.info("Все {} блюд для заказа #{} готовы!", items.size(), orderId);
-    }
-
-    /**
-     * Асинхронный процесс готовки (имитация)
-     */
-    public void processCooking(Long orderId) {
-        log.info(" Заказ #{}: готовка началась ({} мс)", orderId, cookingTimeMs);
-
-        try {
-            /// Имитация готовки
-            Thread.sleep(cookingTimeMs);
-
-            /// Завершаем готовку
-            completeCooking(orderId);
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.error("Готовка прервана для заказа #{}", orderId, e);
-
-            /// Возвращаем статус обратно, если готовка прервана
-            rollbackCooking(orderId);
-
-        } catch (Exception e) {
-            kafkaMetrics.incrementCookingError();
-            log.error("Ошибка при готовке заказа #{}", orderId, e);
-            throw new RuntimeException("Ошибка при готовке заказа " + orderId, e);
-        }
-    }
-
-
-    /**
-     * Транзакционная логика для
-     * Вызывается из асинхронного метода, так как могут быть проблемы при использовании
-     * @Transactional + @Async
-     */
-    @Transactional
-    public Ticket updateTicketStatusTransactional(Long orderId, TicketStatusEnum newStatus) {
-        log.info("Обновление статуса заказа #{} -> {}", orderId, newStatus);
-
-        Ticket ticket = ticketRepository.findByOrderId(orderId)
-                .orElseThrow(() -> new RuntimeException("Тикет не найден: " + orderId));
-
-        /// Проверка на пустые блюда
-        if (ticket.getItems() == null || ticket.getItems().isEmpty()) {
-            log.warn("Заказ #{} не содержит блюд, завершаем готовку", orderId);
-
-            ticket.setStatus(TicketStatusEnum.READY);
-            Ticket updated = ticketRepository.save(ticket);
-            cacheTicketSafe(orderId, updated);
-
-            return null;
-        }
-
-        ticket.setStatus(newStatus);
-        Ticket updatedTicket = ticketRepository.save(ticket);
-        cacheTicketSafe(orderId, updatedTicket);
-
-        return updatedTicket;
-    }
-
-
-    /// Откат готовки для заказа
-    @Transactional
-    public void rollbackCooking(Long orderId) {
-        log.info("Откат готовки для заказа #{}", orderId);
-
-        try {
-            Ticket ticket = ticketRepository.findByOrderId(orderId).orElse(null);
-            if (ticket == null) {
-                log.warn("Тикет для заказа #{} не найден", orderId);
-                return;
-            }
-
-            /// Возвращаем статус обратно в OPEN
-            if (ticket.getStatus() == TicketStatusEnum.IN_PROGRESS) {
-                ticket.setStatus(TicketStatusEnum.OPEN);
-                ticketRepository.save(ticket);
-                cacheTicketSafe(orderId, ticket);
-                log.info("Статус заказа #{} возвращён в OPEN", orderId);
-            }
-
-        } catch (Exception e) {
-            log.error("Ошибка при откате готовки заказа #{}", orderId, e);
-        }
     }
 
 

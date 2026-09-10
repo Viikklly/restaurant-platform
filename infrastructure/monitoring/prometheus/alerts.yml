@@ -9,7 +9,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: " Сервис {{ $labels.instance }} недоступен"
+          summary: "Сервис {{ $labels.instance }} недоступен"
           description: "Сервис {{ $labels.instance }} не отвечает уже более 1 минуты"
 
       # Отслеживает 5ХХ ошибки
@@ -21,7 +21,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: " Много ошибок 5xx на {{ $labels.instance }}"
+          summary: "Много ошибок 5xx на {{ $labels.instance }}"
           description: "Доля ошибок составляет {{ $value | humanizePercentage }} на {{ $labels.instance }} уже более 2 минут"
 
       # 95-й перцентиль = время, за которое выполняются 95% всех запросов
@@ -44,3 +44,44 @@ groups:
             - состояние базы данных
             - внешние интеграции
             - утилизацию CPU и памяти
+
+
+      # Много ошибок 429 (Rate Limiter
+      - alert: TooManyRequests
+        expr: |
+          sum(rate(http_server_requests_seconds_count{status="429"}[5m])) by (instance) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Много 429 (Rate Limiter) на {{ $labels.instance }}"
+          description: |
+            На {{ $labels.instance }} более 5 запросов в секунду получают HTTP 429.
+            Возможно, клиенты превышают лимиты или идёт DDoS-атака.
+            
+
+      # Circuit Breaker в состоянии OPEN
+      - alert: CircuitBreakerOpen
+        expr: resilience4j_circuitbreaker_state{state="open"} == 1
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Circuit Breaker в состоянии OPEN на {{ $labels.instance }}"
+          description: |
+            Circuit Breaker для {{ $labels.name }} находится в состоянии OPEN.
+            Это значит, что сервис-зависимость перегружена или недоступна.
+            Проверьте логи и инфраструктуру.
+
+      # Высокая загрузка пула соединений
+      - alert: HikariPoolHighUsage
+        expr: |
+          (hikaricp_connections_active{service=~".*"} / hikaricp_connections_max{service=~".*"}) * 100 > 90
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая загрузка пула БД на {{ $labels.service }}"
+          description: |
+            Пул соединений HikariCP на {{ $labels.service }} загружен на {{ $value }}%.
+            Рассмотрите увеличение maximum-pool-size.

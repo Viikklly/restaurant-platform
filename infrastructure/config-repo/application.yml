@@ -110,6 +110,7 @@ management:
       logback: true
       system: true
       process: true
+      resilience4j: true
 
     # tags: добавляет дополнительные метки ко всем метрикам
     tags:

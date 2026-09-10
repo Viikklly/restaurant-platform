@@ -45,6 +45,9 @@ class KitchenServiceUnitTest {
     private KafkaMetrics kafkaMetrics;
 
     @Mock
+    private CookingProcessor cookingProcessor;
+
+    @Mock
     private Timer.Sample timerSample;
 
     @InjectMocks
@@ -55,6 +58,7 @@ class KitchenServiceUnitTest {
 
     @BeforeEach
     void setUp() {
+        /// Метрики — заглушки
         lenient().when(kafkaMetrics.startProcessingTimer()).thenReturn(timerSample);
         lenient().doNothing().when(kafkaMetrics).stopProcessingTimer(any(Timer.Sample.class));
         lenient().doNothing().when(kafkaMetrics).incrementProduced();
@@ -64,11 +68,11 @@ class KitchenServiceUnitTest {
         lenient().doNothing().when(kafkaMetrics).incrementOrderReady();
         lenient().doNothing().when(kafkaMetrics).incrementCookingError();
 
-        // Устанавливаем время готовки через reflection
-        ReflectionTestUtils.setField(kitchenService, "cookingTimeMs", 100L);
+        /// Время готовки — маленькое, чтобы тесты были быстрыми
+        ReflectionTestUtils.setField(kitchenService, "cookingTimeMs", 10L);
     }
 
-    // ========== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ==========
+    /// Вспомогательные методы
 
     private OrderPaidEvent createOrderPaidEvent(Long orderId, List<String> items) {
         return new OrderPaidEvent(orderId, TEST_USER_ID, items, null);
@@ -83,7 +87,7 @@ class KitchenServiceUnitTest {
                 .build();
     }
 
-    // ========== ТЕСТЫ ДЛЯ acceptOrder() ==========
+    ///acceptOrder()
 
     @Nested
     @DisplayName("Тесты acceptOrder() - принятие заказа")
@@ -97,7 +101,8 @@ class KitchenServiceUnitTest {
             OrderPaidEvent event = createOrderPaidEvent(TEST_ORDER_ID, items);
             Ticket savedTicket = createTicket(TEST_ORDER_ID, items, TicketStatusEnum.OPEN);
 
-            when(ticketRepository.save(any(Ticket.class))).thenReturn(savedTicket);
+            /// Мокаем CookingProcessor (а не repository)
+            when(cookingProcessor.saveTicket(any(Ticket.class))).thenReturn(savedTicket);
             when(kafkaTemplate.send(anyString(), any())).thenReturn(null);
             doNothing().when(redisService).cacheTicket(anyLong(), any());
 
@@ -106,7 +111,7 @@ class KitchenServiceUnitTest {
 
             // THEN
             ArgumentCaptor<Ticket> ticketCaptor = ArgumentCaptor.forClass(Ticket.class);
-            verify(ticketRepository).save(ticketCaptor.capture());
+            verify(cookingProcessor).saveTicket(ticketCaptor.capture());
 
             Ticket saved = ticketCaptor.getValue();
             assertThat(saved.getOrderId()).isEqualTo(TEST_ORDER_ID);
@@ -126,7 +131,7 @@ class KitchenServiceUnitTest {
             OrderPaidEvent event = createOrderPaidEvent(TEST_ORDER_ID, List.of());
             Ticket savedTicket = createTicket(TEST_ORDER_ID, List.of(), TicketStatusEnum.OPEN);
 
-            when(ticketRepository.save(any(Ticket.class))).thenReturn(savedTicket);
+            when(cookingProcessor.saveTicket(any(Ticket.class))).thenReturn(savedTicket);
             when(kafkaTemplate.send(anyString(), any())).thenReturn(null);
 
             // WHEN
@@ -134,7 +139,7 @@ class KitchenServiceUnitTest {
 
             // THEN
             ArgumentCaptor<Ticket> ticketCaptor = ArgumentCaptor.forClass(Ticket.class);
-            verify(ticketRepository).save(ticketCaptor.capture());
+            verify(cookingProcessor).saveTicket(ticketCaptor.capture());
 
             Ticket saved = ticketCaptor.getValue();
             assertThat(saved.getItems()).isEmpty();
@@ -147,7 +152,7 @@ class KitchenServiceUnitTest {
             // GIVEN
             OrderPaidEvent event = createOrderPaidEvent(TEST_ORDER_ID, List.of("Пицца"));
 
-            when(ticketRepository.save(any(Ticket.class)))
+            when(cookingProcessor.saveTicket(any(Ticket.class)))
                     .thenThrow(new RuntimeException("DB error"));
 
             // WHEN & THEN
@@ -161,7 +166,7 @@ class KitchenServiceUnitTest {
         }
     }
 
-    // ========== ТЕСТЫ ДЛЯ completeCooking() ==========
+    ///completeCooking()
 
     @Nested
     @DisplayName("Тесты completeCooking() - завершение готовки")
@@ -172,11 +177,10 @@ class KitchenServiceUnitTest {
         void completeCooking_ShouldChangeStatusToReady() {
             // GIVEN
             List<String> items = List.of("Пицца", "Паста");
-            Ticket ticket = createTicket(TEST_ORDER_ID, items, TicketStatusEnum.OPEN);
             Ticket updatedTicket = createTicket(TEST_ORDER_ID, items, TicketStatusEnum.READY);
 
-            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.of(ticket));
-            when(ticketRepository.save(any(Ticket.class))).thenReturn(updatedTicket);
+            /// Мокаем CookingProcessor
+            when(cookingProcessor.completeCooking(TEST_ORDER_ID)).thenReturn(updatedTicket);
             when(kafkaTemplate.send(anyString(), any())).thenReturn(null);
             doNothing().when(redisService).cacheTicket(anyLong(), any());
 
@@ -184,10 +188,8 @@ class KitchenServiceUnitTest {
             kitchenService.completeCooking(TEST_ORDER_ID);
 
             // THEN
-            assertThat(ticket.getStatus()).isEqualTo(TicketStatusEnum.READY);
-            verify(ticketRepository).save(ticket);
+            verify(cookingProcessor).completeCooking(TEST_ORDER_ID);
             verify(redisService).cacheTicket(eq(TEST_ORDER_ID), any(Ticket.class));
-            verify(kafkaMetrics).incrementOrderReady();
             verify(kafkaMetrics).incrementProduced();
 
             ArgumentCaptor<KitchenOrderReadyEvent> eventCaptor = ArgumentCaptor.forClass(KitchenOrderReadyEvent.class);
@@ -195,8 +197,8 @@ class KitchenServiceUnitTest {
 
             KitchenOrderReadyEvent event = eventCaptor.getValue();
             assertThat(event.getOrderId()).isEqualTo(TEST_ORDER_ID);
-
             assertThat(event.getStatus()).isEqualTo("READY");
+            assertThat(event.getOrderItemsList()).containsExactly("Пицца", "Паста");
         }
 
         @Test
@@ -204,19 +206,20 @@ class KitchenServiceUnitTest {
         void completeCooking_ShouldThrowException_WhenTicketNotFound() {
             // GIVEN
             Long nonExistentOrderId = 999L;
-            when(ticketRepository.findByOrderId(nonExistentOrderId)).thenReturn(Optional.empty());
+            when(cookingProcessor.completeCooking(nonExistentOrderId))
+                    .thenThrow(new RuntimeException("Тикет не найден для заказа: " + nonExistentOrderId));
 
             // WHEN & THEN
             assertThatThrownBy(() -> kitchenService.completeCooking(nonExistentOrderId))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessageContaining("Тикет не найден");
 
-            verify(ticketRepository, never()).save(any(Ticket.class));
             verify(kafkaMetrics).incrementCookingError();
+            verify(kafkaTemplate, never()).send(anyString(), any());
         }
     }
 
-    // ========== ТЕСТЫ ДЛЯ cancelOrder() ==========
+    ///cancelOrder()
 
     @Nested
     @DisplayName("Тесты cancelOrder() - отмена заказа")
@@ -226,238 +229,157 @@ class KitchenServiceUnitTest {
         @DisplayName("Успешная отмена заказа")
         void cancelOrder_ShouldChangeStatusToCancelled() {
             // GIVEN
-            Ticket ticket = createTicket(TEST_ORDER_ID, List.of("Пицца"), TicketStatusEnum.OPEN);
-
-            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.of(ticket));
-            when(ticketRepository.save(any(Ticket.class))).thenReturn(ticket);
+            when(cookingProcessor.cancelTicket(TEST_ORDER_ID)).thenReturn(true);
             when(kafkaTemplate.send(anyString(), any())).thenReturn(null);
-            doNothing().when(redisService).evictTicket(anyLong());
 
             // WHEN
             kitchenService.cancelOrder(TEST_ORDER_ID);
 
             // THEN
-            assertThat(ticket.getStatus()).isEqualTo(TicketStatusEnum.CANCELLED);
-            verify(ticketRepository).save(ticket);
-            verify(redisService).evictTicket(TEST_ORDER_ID);
+            verify(cookingProcessor).cancelTicket(TEST_ORDER_ID);
             verify(kafkaTemplate).send(eq("kitchen-service.order.cancelled"), eq(TEST_ORDER_ID));
         }
 
         @Test
-        @DisplayName("Отмена заказа - тикет не найден")
-        void cancelOrder_ShouldNotThrow_WhenTicketNotFound() {
+        @DisplayName("Отмена заказа - тикет не найден, событие НЕ отправляется")
+        void cancelOrder_ShouldNotSendEvent_WhenTicketNotFound() {
             // GIVEN
-            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.empty());
+            when(cookingProcessor.cancelTicket(TEST_ORDER_ID)).thenReturn(false);
 
             // WHEN
             kitchenService.cancelOrder(TEST_ORDER_ID);
 
             // THEN
-            verify(ticketRepository, never()).save(any(Ticket.class));
-            verify(redisService, never()).evictTicket(anyLong());
+            verify(cookingProcessor).cancelTicket(TEST_ORDER_ID);
+            verify(kafkaTemplate, never()).send(eq("kitchen-service.order.cancelled"), any());
         }
 
         @Test
         @DisplayName("Отмена заказа - нельзя отменить готовый заказ")
         void cancelOrder_ShouldNotCancel_WhenAlreadyReady() {
             // GIVEN
-            Ticket ticket = createTicket(TEST_ORDER_ID, List.of("Пицца"), TicketStatusEnum.READY);
-
-            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.of(ticket));
+            when(cookingProcessor.cancelTicket(TEST_ORDER_ID)).thenReturn(false);
 
             // WHEN
             kitchenService.cancelOrder(TEST_ORDER_ID);
 
             // THEN
-            assertThat(ticket.getStatus()).isEqualTo(TicketStatusEnum.READY);
-            verify(ticketRepository, never()).save(any(Ticket.class));
-            verify(redisService, never()).evictTicket(anyLong());
+            verify(cookingProcessor).cancelTicket(TEST_ORDER_ID);
             verify(kafkaTemplate, never()).send(eq("kitchen-service.order.cancelled"), any());
         }
     }
 
-    // ========== ТЕСТЫ ДЛЯ updateTicketStatusTransactional() ==========
+    ///startCookingAsync()
 
     @Nested
-    @DisplayName("Тесты updateTicketStatusTransactional()")
-    class UpdateTicketStatusTransactionalTests {
+    @DisplayName("Тесты startCookingAsync() - асинхронная готовка")
+    class StartCookingAsyncTests {
 
         @Test
-        @DisplayName("Обновление статуса тикета")
-        void updateTicketStatusTransactional_ShouldUpdateStatus() {
+        @DisplayName("Успешная готовка заказа")
+        void startCookingAsync_ShouldCookOrder() {
             // GIVEN
-            Ticket ticket = createTicket(TEST_ORDER_ID, List.of("Пицца"), TicketStatusEnum.OPEN);
+            List<String> items = List.of("Пицца");
+            Ticket inProgressTicket = createTicket(TEST_ORDER_ID, items, TicketStatusEnum.IN_PROGRESS);
+            Ticket readyTicket = createTicket(TEST_ORDER_ID, items, TicketStatusEnum.READY);
 
-            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.of(ticket));
-            when(ticketRepository.save(any(Ticket.class))).thenReturn(ticket);
+            when(cookingProcessor.updateTicketStatus(TEST_ORDER_ID, TicketStatusEnum.IN_PROGRESS))
+                    .thenReturn(inProgressTicket);
+            when(cookingProcessor.completeCooking(TEST_ORDER_ID)).thenReturn(readyTicket);
+            when(kafkaTemplate.send(anyString(), any())).thenReturn(null);
             doNothing().when(redisService).cacheTicket(anyLong(), any());
 
             // WHEN
-            Ticket result = kitchenService.updateTicketStatusTransactional(TEST_ORDER_ID, TicketStatusEnum.IN_PROGRESS);
+            kitchenService.startCookingAsync(TEST_ORDER_ID);
 
             // THEN
-            assertThat(result).isNotNull();
-            assertThat(result.getStatus()).isEqualTo(TicketStatusEnum.IN_PROGRESS);
-            verify(ticketRepository).save(ticket);
-            verify(redisService).cacheTicket(eq(TEST_ORDER_ID), any(Ticket.class));
+            verify(cookingProcessor).updateTicketStatus(TEST_ORDER_ID, TicketStatusEnum.IN_PROGRESS);
+            verify(kafkaMetrics).incrementOrderPreparing();
+            verify(cookingProcessor).completeCooking(TEST_ORDER_ID);
         }
 
         @Test
-        @DisplayName("Обновление статуса с пустым списком блюд - сразу READY")
-        void updateTicketStatusTransactional_ShouldSetReady_WhenItemsEmpty() {
+        @DisplayName("Пустой заказ - сразу READY")
+        void startCookingAsync_ShouldCompleteImmediately_WhenNoItems() {
             // GIVEN
-            Ticket ticket = createTicket(TEST_ORDER_ID, List.of(), TicketStatusEnum.OPEN);
+            Ticket readyTicket = createTicket(TEST_ORDER_ID, List.of(), TicketStatusEnum.READY);
 
-            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.of(ticket));
-            when(ticketRepository.save(any(Ticket.class))).thenReturn(ticket);
-            doNothing().when(redisService).cacheTicket(anyLong(), any());
+            when(cookingProcessor.updateTicketStatus(TEST_ORDER_ID, TicketStatusEnum.IN_PROGRESS))
+                    .thenReturn(readyTicket);
+            when(cookingProcessor.completeCooking(TEST_ORDER_ID)).thenReturn(readyTicket);
+            when(kafkaTemplate.send(anyString(), any())).thenReturn(null);
 
             // WHEN
-            Ticket result = kitchenService.updateTicketStatusTransactional(TEST_ORDER_ID, TicketStatusEnum.IN_PROGRESS);
+            kitchenService.startCookingAsync(TEST_ORDER_ID);
 
             // THEN
-            assertThat(result).isNull();
-            assertThat(ticket.getStatus()).isEqualTo(TicketStatusEnum.READY);
-            verify(ticketRepository).save(ticket);
-            verify(redisService).cacheTicket(eq(TEST_ORDER_ID), any(Ticket.class));
+            verify(cookingProcessor).updateTicketStatus(TEST_ORDER_ID, TicketStatusEnum.IN_PROGRESS);
+            /// cookDishes НЕ вызывается (пустой список)
+            verify(kafkaMetrics, never()).incrementOrderPreparing();
+            verify(cookingProcessor).completeCooking(TEST_ORDER_ID);
         }
 
         @Test
-        @DisplayName("Обновление статуса - тикет не найден")
-        void updateTicketStatusTransactional_ShouldThrowException_WhenTicketNotFound() {
+        @DisplayName("Ошибка готовки - откат")
+        void startCookingAsync_ShouldRollback_OnError() {
             // GIVEN
-            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.empty());
+            when(cookingProcessor.updateTicketStatus(TEST_ORDER_ID, TicketStatusEnum.IN_PROGRESS))
+                    .thenThrow(new RuntimeException("DB error"));
+            doNothing().when(cookingProcessor).rollbackCooking(TEST_ORDER_ID);
 
             // WHEN & THEN
-            assertThatThrownBy(() -> kitchenService.updateTicketStatusTransactional(TEST_ORDER_ID, TicketStatusEnum.IN_PROGRESS))
-                    .isInstanceOf(RuntimeException.class)
-                    .hasMessageContaining("Тикет не найден");
+            assertThatThrownBy(() -> kitchenService.startCookingAsync(TEST_ORDER_ID))
+                    .isInstanceOf(RuntimeException.class);
 
-            verify(ticketRepository, never()).save(any(Ticket.class));
+            verify(kafkaMetrics).incrementCookingError();
+            verify(cookingProcessor).rollbackCooking(TEST_ORDER_ID);
         }
     }
 
-    // ========== ТЕСТЫ ДЛЯ rollbackCooking() ==========
-
+    ///processQueue()
     @Nested
-    @DisplayName("Тесты rollbackCooking() - откат готовки")
-    class RollbackCookingTests {
+    @DisplayName("Тесты processQueue() - обработка очереди")
+    class ProcessQueueTests {
 
         @Test
-        @DisplayName("Откат готовки - возвращает статус в OPEN")
-        void rollbackCooking_ShouldRevertToOpen() {
+        @DisplayName("Обрабатывает заказ из очереди")
+        void processQueue_ShouldProcessOrder() throws Exception {
             // GIVEN
-            Ticket ticket = createTicket(TEST_ORDER_ID, List.of("Пицца"), TicketStatusEnum.IN_PROGRESS);
+            /// Используем рефлексию для доступа к приватному полю orderQueue
+            ConcurrentLinkedQueue<Long> queue = new ConcurrentLinkedQueue<>();
+            queue.offer(TEST_ORDER_ID);
+            ReflectionTestUtils.setField(kitchenService, "orderQueue", queue);
 
-            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.of(ticket));
-            when(ticketRepository.save(any(Ticket.class))).thenReturn(ticket);
-            doNothing().when(redisService).cacheTicket(anyLong(), any());
+            /// Мокаем startCookingAsync через spy
+            KitchenService spyService = spy(kitchenService);
+            doNothing().when(spyService).startCookingAsync(TEST_ORDER_ID);
 
             // WHEN
-            kitchenService.rollbackCooking(TEST_ORDER_ID);
+            spyService.processQueue();
 
             // THEN
-            assertThat(ticket.getStatus()).isEqualTo(TicketStatusEnum.OPEN);
-            verify(ticketRepository).save(ticket);
-            verify(redisService).cacheTicket(eq(TEST_ORDER_ID), any(Ticket.class));
+            verify(spyService).startCookingAsync(TEST_ORDER_ID);
+            assertThat(queue).isEmpty();
         }
 
         @Test
-        @DisplayName("Откат готовки - не меняет статус, если не IN_PROGRESS")
-        void rollbackCooking_ShouldNotChangeStatus_WhenNotInProgress() {
+        @DisplayName("processQueue - ничего не делает, если очередь пуста")
+        void processQueue_ShouldDoNothing_WhenQueueEmpty() {
             // GIVEN
-            Ticket ticket = createTicket(TEST_ORDER_ID, List.of("Пицца"), TicketStatusEnum.READY);
+            ConcurrentLinkedQueue<Long> queue = new ConcurrentLinkedQueue<>();
+            ReflectionTestUtils.setField(kitchenService, "orderQueue", queue);
 
-            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.of(ticket));
+            KitchenService spyService = spy(kitchenService);
 
             // WHEN
-            kitchenService.rollbackCooking(TEST_ORDER_ID);
+            spyService.processQueue();
 
             // THEN
-            assertThat(ticket.getStatus()).isEqualTo(TicketStatusEnum.READY);
-            verify(ticketRepository, never()).save(any(Ticket.class));
-            verify(redisService, never()).cacheTicket(anyLong(), any());
+            verify(spyService, never()).startCookingAsync(anyLong());
         }
     }
 
-    // ========== ТЕСТЫ ДЛЯ getTicketByOrderId() ==========
-
-    @Nested
-    @DisplayName("Тесты getTicketByOrderId()")
-    class GetTicketByOrderIdTests {
-
-        @Test
-        @DisplayName("Возвращает тикет из Redis")
-        void getTicketByOrderId_ShouldReturnFromRedis() {
-            // GIVEN
-            Ticket ticket = createTicket(TEST_ORDER_ID, List.of("Пицца"), TicketStatusEnum.OPEN);
-
-            when(redisService.getCachedTicket(TEST_ORDER_ID)).thenReturn(Optional.of(ticket));
-
-            // WHEN
-            Ticket result = kitchenService.getTicketByOrderId(TEST_ORDER_ID);
-
-            // THEN
-            assertThat(result).isNotNull();
-            assertThat(result.getOrderId()).isEqualTo(TEST_ORDER_ID);
-            verify(ticketRepository, never()).findByOrderId(anyLong());
-        }
-
-        @Test
-        @DisplayName("Загружает из БД, если в Redis нет")
-        void getTicketByOrderId_ShouldLoadFromDatabase_WhenNotInRedis() {
-            // GIVEN
-            Ticket ticket = createTicket(TEST_ORDER_ID, List.of("Паста"), TicketStatusEnum.OPEN);
-
-            when(redisService.getCachedTicket(TEST_ORDER_ID)).thenReturn(Optional.empty());
-            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.of(ticket));
-            doNothing().when(redisService).cacheTicket(anyLong(), any());
-
-            // WHEN
-            Ticket result = kitchenService.getTicketByOrderId(TEST_ORDER_ID);
-
-            // THEN
-            assertThat(result).isNotNull();
-            assertThat(result.getOrderId()).isEqualTo(TEST_ORDER_ID);
-            verify(ticketRepository).findByOrderId(TEST_ORDER_ID);
-            verify(redisService).cacheTicket(eq(TEST_ORDER_ID), any(Ticket.class));
-        }
-
-        @Test
-        @DisplayName("Выбрасывает исключение, если тикет не найден")
-        void getTicketByOrderId_ShouldThrowException_WhenNotFound() {
-            // GIVEN
-            when(redisService.getCachedTicket(TEST_ORDER_ID)).thenReturn(Optional.empty());
-            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.empty());
-
-            // WHEN & THEN
-            assertThatThrownBy(() -> kitchenService.getTicketByOrderId(TEST_ORDER_ID))
-                    .isInstanceOf(RuntimeException.class)
-                    .hasMessageContaining("Тикет не найден");
-        }
-
-        @Test
-        @DisplayName("Очищает Redis при ошибке приведения типа")
-        void getTicketByOrderId_ShouldEvictCache_OnClassCastException() {
-            // GIVEN
-            when(redisService.getCachedTicket(TEST_ORDER_ID)).thenReturn(Optional.of("неправильный объект"));
-            doNothing().when(redisService).evictTicket(TEST_ORDER_ID);
-
-            Ticket ticket = createTicket(TEST_ORDER_ID, List.of("Пицца"), TicketStatusEnum.OPEN);
-            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.of(ticket));
-            doNothing().when(redisService).cacheTicket(anyLong(), any());
-
-            // WHEN
-            Ticket result = kitchenService.getTicketByOrderId(TEST_ORDER_ID);
-
-            // THEN
-            assertThat(result).isNotNull();
-            verify(redisService).evictTicket(TEST_ORDER_ID);
-            verify(ticketRepository).findByOrderId(TEST_ORDER_ID);
-        }
-    }
-
-    // ========== ТЕСТЫ ДЛЯ CRUD МЕТОДОВ ==========
+    ///CRUD МЕТОДОВ
 
     @Nested
     @DisplayName("Тесты CRUD методов")
@@ -508,6 +430,76 @@ class KitchenServiceUnitTest {
             assertThatThrownBy(() -> kitchenService.getTicketById(nonExistentId))
                     .isInstanceOf(RuntimeException.class)
                     .hasMessageContaining("Тикет не найден");
+        }
+
+        @Test
+        @DisplayName("getTicketByOrderId() - возвращает тикет из Redis")
+        void getTicketByOrderId_ShouldReturnFromRedis() {
+            // GIVEN
+            Ticket ticket = createTicket(TEST_ORDER_ID, List.of("Пицца"), TicketStatusEnum.OPEN);
+
+            when(redisService.getCachedTicket(TEST_ORDER_ID)).thenReturn(Optional.of(ticket));
+
+            // WHEN
+            Ticket result = kitchenService.getTicketByOrderId(TEST_ORDER_ID);
+
+            // THEN
+            assertThat(result).isNotNull();
+            assertThat(result.getOrderId()).isEqualTo(TEST_ORDER_ID);
+            verify(ticketRepository, never()).findByOrderId(anyLong());
+        }
+
+        @Test
+        @DisplayName("getTicketByOrderId() - загружает из БД, если в Redis нет")
+        void getTicketByOrderId_ShouldLoadFromDatabase_WhenNotInRedis() {
+            // GIVEN
+            Ticket ticket = createTicket(TEST_ORDER_ID, List.of("Паста"), TicketStatusEnum.OPEN);
+
+            when(redisService.getCachedTicket(TEST_ORDER_ID)).thenReturn(Optional.empty());
+            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.of(ticket));
+            doNothing().when(redisService).cacheTicket(anyLong(), any());
+
+            // WHEN
+            Ticket result = kitchenService.getTicketByOrderId(TEST_ORDER_ID);
+
+            // THEN
+            assertThat(result).isNotNull();
+            assertThat(result.getOrderId()).isEqualTo(TEST_ORDER_ID);
+            verify(ticketRepository).findByOrderId(TEST_ORDER_ID);
+            verify(redisService).cacheTicket(eq(TEST_ORDER_ID), any(Ticket.class));
+        }
+
+        @Test
+        @DisplayName("getTicketByOrderId() - выбрасывает исключение, если тикет не найден")
+        void getTicketByOrderId_ShouldThrowException_WhenNotFound() {
+            // GIVEN
+            when(redisService.getCachedTicket(TEST_ORDER_ID)).thenReturn(Optional.empty());
+            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.empty());
+
+            // WHEN & THEN
+            assertThatThrownBy(() -> kitchenService.getTicketByOrderId(TEST_ORDER_ID))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessageContaining("Тикет не найден");
+        }
+
+        @Test
+        @DisplayName("getTicketByOrderId() - очищает Redis при ошибке приведения типа")
+        void getTicketByOrderId_ShouldEvictCache_OnClassCastException() {
+            // GIVEN
+            when(redisService.getCachedTicket(TEST_ORDER_ID)).thenReturn(Optional.of("неправильный объект"));
+            doNothing().when(redisService).evictTicket(TEST_ORDER_ID);
+
+            Ticket ticket = createTicket(TEST_ORDER_ID, List.of("Пицца"), TicketStatusEnum.OPEN);
+            when(ticketRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(Optional.of(ticket));
+            doNothing().when(redisService).cacheTicket(anyLong(), any());
+
+            // WHEN
+            Ticket result = kitchenService.getTicketByOrderId(TEST_ORDER_ID);
+
+            // THEN
+            assertThat(result).isNotNull();
+            verify(redisService).evictTicket(TEST_ORDER_ID);
+            verify(ticketRepository).findByOrderId(TEST_ORDER_ID);
         }
 
         @Test
@@ -636,50 +628,6 @@ class KitchenServiceUnitTest {
 
             // THEN
             assertThat(result).isFalse();
-        }
-    }
-
-    // ========== ТЕСТЫ ДЛЯ processQueue() ==========
-
-    @Nested
-    @DisplayName("Тесты processQueue() - обработка очереди")
-    class ProcessQueueTests {
-
-        @Test
-        @DisplayName("Обрабатывает заказ из очереди")
-        void processQueue_ShouldProcessOrder() throws Exception {
-            // GIVEN
-            // Используем рефлексию для доступа к приватному полю orderQueue
-            ConcurrentLinkedQueue<Long> queue = new ConcurrentLinkedQueue<>();
-            queue.offer(TEST_ORDER_ID);
-            ReflectionTestUtils.setField(kitchenService, "orderQueue", queue);
-
-            // Мокаем startCookingAsync через spy
-            KitchenService spyService = spy(kitchenService);
-            doNothing().when(spyService).startCookingAsync(TEST_ORDER_ID);
-
-            // WHEN
-            spyService.processQueue();
-
-            // THEN
-            verify(spyService).startCookingAsync(TEST_ORDER_ID);
-            assertThat(queue).isEmpty();
-        }
-
-        @Test
-        @DisplayName("processQueue - ничего не делает, если очередь пуста")
-        void processQueue_ShouldDoNothing_WhenQueueEmpty() {
-            // GIVEN
-            ConcurrentLinkedQueue<Long> queue = new ConcurrentLinkedQueue<>();
-            ReflectionTestUtils.setField(kitchenService, "orderQueue", queue);
-
-            KitchenService spyService = spy(kitchenService);
-
-            // WHEN
-            spyService.processQueue();
-
-            // THEN
-            verify(spyService, never()).startCookingAsync(anyLong());
         }
     }
 }

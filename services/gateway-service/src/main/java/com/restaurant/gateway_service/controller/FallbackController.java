@@ -1,63 +1,83 @@
 package com.restaurant.gateway_service.controller;
 
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Mono;
 
 import java.util.HashMap;
 import java.util.Map;
 
-import static reactor.netty.http.HttpConnectionLiveness.log;
-
 /**
- * FallbackController - это контроллер, который возвращает ответы когда основной сервис не доступен.
+ * FallbackController - возвращает ответы когда основной сервис недоступен.
+ * Все пути должны совпадать с fallbackUri в конфигурации Gateway
  */
-
+@RestController
 public class FallbackController {
 
+    private static final Logger log = LoggerFactory.getLogger(FallbackController.class);
 
-    @GetMapping("/orders")
-    public ResponseEntity<Map<String, Object>> ordersFallback() {
-        return createFallbackResponse("Order service is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+    /**
+     * Fallback для Order Service
+     * Путь: /fallback/orders (совпадает с fallbackUri в конфиге)
+     */
+    @GetMapping("/fallback/orders")
+    public Mono<Map<String, Object>> ordersFallback() {
+        log.warn("CircuitBreaker activated for Order Service");
+        return createFallbackResponse("Сервис заказов временно недоступен. Попробуйте позже.");
     }
 
-    @GetMapping("/payments")
-    public ResponseEntity<Map<String, Object>> paymentsFallback() {
-        return createFallbackResponse("Payment service is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+    /**
+     * Fallback для Payment Service
+     */
+    @GetMapping("/fallback/payments")
+    public Mono<Map<String, Object>> paymentsFallback() {
+        log.warn("CircuitBreaker activated for Payment Service");
+        return createFallbackResponse("Платежный сервис временно недоступен.");
     }
 
-    @GetMapping("/kitchen")
-    public ResponseEntity<Map<String, Object>> kitchenFallback() {
-        return createFallbackResponse("Kitchen service is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+    /**
+     * Fallback для Kitchen Service
+     */
+    @GetMapping("/fallback/kitchen")
+    public Mono<Map<String, Object>> kitchenFallback() {
+        log.warn("CircuitBreaker activated for Kitchen Service");
+        return createFallbackResponse("Кухня временно недоступна.");
     }
 
-    @GetMapping("/notifications")
-    public ResponseEntity<Map<String, Object>> notificationsFallback() {
-        return createFallbackResponse("Notification service is temporarily unavailable", HttpStatus.SERVICE_UNAVAILABLE);
+    /**
+     * Fallback для Notification Service
+     */
+    @GetMapping("/fallback/notifications")
+    public Mono<Map<String, Object>> notificationsFallback() {
+        log.warn("CircuitBreaker activated for Notification Service");
+        return createFallbackResponse("Служба уведомлений временно недоступна.");
     }
 
     /**
      * Fallback для Auth Service
      */
-    @GetMapping("/auth")
-    public ResponseEntity<Map<String, Object>> authFallback() {
-        log.warn("Auth service fallback triggered");
+    @GetMapping("/fallback/auth")
+    public Mono<Map<String, Object>> authFallback() {
+        log.warn("CircuitBreaker activated for Auth Service");
         return createFallbackResponse(
-                "Auth service is temporarily unavailable. Please try again later.",
-                HttpStatus.SERVICE_UNAVAILABLE
+                "Сервис авторизации временно недоступен. Пожалуйста, повторите попытку позже."
         );
     }
 
-
-    private ResponseEntity<Map<String, Object>> createFallbackResponse(String message, HttpStatus status) {
+    /**
+     * Универсальный метод создания fallback-ответа
+     */
+    private Mono<Map<String, Object>> createFallbackResponse(String message) {
         Map<String, Object> response = new HashMap<>();
-        response.put("status", status.value());
-        response.put("error", status.getReasonPhrase());
+        response.put("status", HttpStatus.SERVICE_UNAVAILABLE.value());
+        response.put("error", HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase());
         response.put("message", message);
         response.put("timestamp", System.currentTimeMillis());
         response.put("type", "FALLBACK_RESPONSE");
 
-        return ResponseEntity.status(status).body(response);
+        return Mono.just(response);
     }
 }

@@ -35,7 +35,8 @@ public class AuthValidationService {
     /// @CircuitBreaker	Включает защитный механизм "автоматический выключатель"
     /// name = "authService"	Имя этого выключателя (для мониторинга)
     /// fallbackMethod = "fallbackValidateToken"	Какой метод вызывать при ошибке
-    @CircuitBreaker(name = "authService", fallbackMethod = "fallbackValidateToken")
+    /// так как есть в yml пока убираем
+    ///@CircuitBreaker(name = "authService", fallbackMethod = "fallbackValidateToken")
     public Mono<AuthResponse> validateToken(String token) {
         return tokenValidationClient.validateToken(token);
     }

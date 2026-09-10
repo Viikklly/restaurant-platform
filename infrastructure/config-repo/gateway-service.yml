@@ -17,6 +17,20 @@ spring:
   cloud:
     gateway:
 
+      # Настройки Netty
+      httpclient:
+        connect-timeout: 5000         # 5 секунд (соединение)
+        response-timeout: 15s          # 15 секунд (ожидание ответа)
+        pool:
+          max-connections: 200
+          max-idle-time: 5s
+          max-life-time: 60s
+
+      server:
+        netty:
+          max-connections: 500            # Максимальное количество одновременных TCP-соединений
+          max-pending-requests: 100       # Максимальный размер очереди ожидающих запросов
+
       # Глобальные фильтры (применяются ко всем маршрутам)
       default-filters:
         # Добавляем correlation ID в каждый запрос
@@ -34,7 +48,6 @@ spring:
       # routes: список маршрутов (правил перенаправления запросов)
       # Каждый маршрут определяет: какой запрос куда отправлять
       routes:
-
 
         # AUTH SERVICE (СЕРВИС АУТЕНТИФИКАЦИИ)
         - id: auth-service
@@ -55,23 +68,50 @@ spring:
             # Path=/auth/** - путь запроса должен начинаться с /auth/
             - Path=/auth/**
           filters:
+
+            # Retry                               # количество повторных попыток (всего будет 4 вызова 1 + 3)
+            - name: Retry
+              args:
+                retries: 3
+                statuses: SERVICE_UNAVAILABLE, INTERNAL_SERVER_ERROR      # на какие статусы ретраиться
+                methods: GET, POST                                               # только для этих методов
+                backoff:
+                  firstBackoff: 500ms                                     # первая задержка
+                  maxBackoff: 2s                                          # максимальная задержка
+                  factor: 2                                               # множитель увеличения задержки
+
+            # Retry обычно ставят перед CircuitBreaker Так ретраи не попадают в статистику CircuitBreaker'а и не вызывают ложного размыкания.
+
+
             # Rate limiting для защиты от брутфорса и от DDoS атак
             # Redis хранит счетчики, чтобы ограничения работали даже при перезапуске gateway
             #- name: RequestRateLimiter
-           #   args:
+            #   args:
             #    key-resolver: "#{@ipKeyResolver}"       # IP KeyResolver - защита от брутфорса на логине (один IP не может долбить бесконечно)
             #    redis-rate-limiter.replenishRate: 5     # replenishRate: 5 означает "5 запросов в секунду"
             #    redis-rate-limiter.burstCapacity: 10    # максимум 10 burst
+            # Rate Limiter - ЗАЩИТА ОТ DDoS
+            - name: RequestRateLimiter # ограничение частоты запросов
+              args:
+                key-resolver: "#{@ipKeyResolver}"   # идентификатор клиента (по IP) в class RateLimiterConfig
+                redis-rate-limiter.replenishRate: 50   # скорость пополнения токенов в секунду (50/сек чтобы исключить DDoS или брутфорс)
+                redis-rate-limiter.burstCapacity: 100   # максимальный "запас" токенов
+
+
             # Circuit breaker
             # Автоматический выключатель
             # При ошибках → размыкаем цепь → мгновенно возвращаем fallback response
             #Через 5 секунд пробуем снова (half-open)
             #Если починили - закрываем цепь
+            # Circuit Breaker - ЗАЩИТА ОТ ПАДЕНИЙ
             - name: CircuitBreaker
               args:
-                name: authService
-                fallbackUri: forward:/fallback/auth
+                name: authService                     # имя настраиваемого breaker'а
+                fallbackUri: forward:/fallback/auth   # куда перенаправить при ошибке (Вместо ошибки 500 возвращает заранее подготовленный ответ (например: "Сервис временно недоступен, попробуйте позже").)
+
+
           metadata:
+            response-timeout: 10s                                         # для медленных операций
             description: "Authentication and registration (public)"
 
 
@@ -82,27 +122,35 @@ spring:
           predicates:
             - Path=/api/orders/**
           filters:
+            # Retry
+            - name: Retry
+              args:
+                retries: 3
+                statuses: SERVICE_UNAVAILABLE, INTERNAL_SERVER_ERROR
+                methods: GET
+                backoff:
+                  firstBackoff: 500ms
+                  maxBackoff: 2s
+                  factor: 2
             # JWT фильтр (проверяет токен и добавляет X-User-Id)
             # Без него любой мог отправить запрос к /api/orders без токена!
 
-            #- name: JwtAuthenticationFilter
+            #- name: jwtAuthenticationFilter
 
-            # Rate limiting по пользователю
-            #- name: RequestRateLimiter
-            #  args:
-            #    key-resolver: "#{@userKeyResolver}"       # User KeyResolver - разный лимит на пользователя (VIP клиенты могут больше, обычные меньше)
-            #    redis-rate-limiter.replenishRate: 20      # replenishRate: 20 означает "20 запросов в секунду"
-            #    redis-rate-limiter.burstCapacity: 40      # максимум 40 burst
-            # Добавляем заголовки
-            # Backend-сервис знает, что запрос пришел через Gateway, а не напрямую
-            # Можно блокировать запросы, которые идут напрямую к сервису (минуя Gateway) - безопасность
-            - AddRequestHeader=X-Request-Source, gateway
+            # Rate Limiter - ЗАЩИТА ОТ DDoS
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"        # ← IP
+                redis-rate-limiter.replenishRate: 50      # ← 5 запросов/сек с IP
+                redis-rate-limiter.burstCapacity: 100     # ← всплеск до 10
+            # Circuit Breaker - ЗАЩИТА ОТ ПАДЕНИЙ
             - name: CircuitBreaker
               args:
                 name: orderService
                 fallbackUri: forward:/fallback/orders
+
           metadata:
-            description: "Order management (auth disabled)"
+            description: "Order management"
 
 
 
@@ -112,20 +160,30 @@ spring:
           predicates:
             - Path=/api/kitchen/**
           filters:
-            #- name: JwtAuthenticationFilter
-            #- name: RequestRateLimiter
-            #  args:
-            #    key-resolver: "#{@ipKeyResolver}"
-            #    redis-rate-limiter.replenishRate: 30
-            #    redis-rate-limiter.burstCapacity: 50
+            - name: Retry
+              args:
+                retries: 3
+                statuses: SERVICE_UNAVAILABLE
+                methods: GET,PUT
+                backoff:
+                  firstBackoff: 500ms
+                  maxBackoff: 2s
+                  factor: 2
+            #- name: jwtAuthenticationFilter
+            # Rate Limiter - защита от DDoS
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"        # ← IP
+                redis-rate-limiter.replenishRate: 50      # ← 5 запросов/сек с IP
+                redis-rate-limiter.burstCapacity: 100     # ← всплеск до 10
+            #Circuit Breaker - защита от падений
             - name: CircuitBreaker
               args:
                 name: kitchenService
                 fallbackUri: forward:/fallback/kitchen
+
           metadata:
-            description: "Kitchen management (auth disabled)"
-
-
+            description: "Kitchen management"
 
 
         # PAYMENT SERVICE (СЕРВИС ПЛАТЕЖЕЙ)
@@ -134,38 +192,55 @@ spring:
           predicates:
             - Path=/api/payments/**
           filters:
-            #- name: JwtAuthenticationFilter
-            #- name: RequestRateLimiter
-            #  args:
-            #    key-resolver: "#{@userKeyResolver}"
-            #    redis-rate-limiter.replenishRate: 10
-             #   redis-rate-limiter.burstCapacity: 20
+            # источник запроса
+            - name: AddRequestHeader
+              args:
+                name: X-Request-Source
+                value: gateway
+
+            #- name: jwtAuthenticationFilter
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"     # IP
+                redis-rate-limiter.replenishRate: 2   # 2 платежа/сек с IP
+                redis-rate-limiter.burstCapacity: 3   # всплеск до 3
+            # Circuit Breaker - защита от падений
             - name: CircuitBreaker
               args:
                 name: paymentService
                 fallbackUri: forward:/fallback/payments
+          # нет Retry что бы избежать двойной оплаты
           metadata:
             description: "Payment processing (auth disabled)"
 
 
-
-
-
-
-        # ===== NOTIFICATION SERVICE (ОПЦИОНАЛЬНО) =====
+        # NOTIFICATION SERVICE
         - id: notification-service
           uri: lb://NOTIFICATION-SERVICE
           predicates:
             - Path=/api/notifications/**
           filters:
-            #- name: JwtAuthenticationFilter
-           # - name: RequestRateLimiter
-          #  args:
-            #   key-resolver: "#{@userKeyResolver}"
-            #  redis-rate-limiter.replenishRate: 50
-            # redis-rate-limiter.burstCapacity: 100
+            # Источник запроса
+            - name: AddRequestHeader
+              args:
+                name: X-Request-Source
+                value: gateway
+
+            #- name: jwtAuthenticationFilter
+
+              # Rate Limiter
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@ipKeyResolver}"       # IP
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
+              # Circuit Breaker
+            - name: CircuitBreaker
+              args:
+                name: notificationService
+                fallbackUri: forward:/fallback/notification
           metadata:
-            description: "Notifications (requires JWT)"
+            description: "Notifications"
 
         # FALLBACK ROUTE
         # Когда Circuit Breaker срабатывает, Gateway перенаправляет запрос сюда
@@ -176,7 +251,7 @@ spring:
           predicates:
             - Path=/fallback/**
           metadata:
-            description: "Fallback routes for circuit breakers"
+            description: "Запасные пути для circuit breakers"
 
   # Redis для Rate Limiting
   # Rate Limiter требует Redis для хранения счетчиков
@@ -186,7 +261,7 @@ spring:
     redis:
       host: ${REDIS_HOST:redis}
       port: ${REDIS_PORT:6379}
-      timeout: 2000ms
+      timeout: 500ms    # Если Redis не ответил за 500 мс — лучше пропустить запрос (fail-open), чем убить Gateway.
       lettuce:
         pool:
           max-active: 8
@@ -195,6 +270,8 @@ spring:
 
 # JWT Configuration (для валидации)
 app:
+  gateway:
+    jwt-filter-enabled: false # для разработки пока отключаем
   jwt:
     secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
     expiration: 86400000
@@ -209,7 +286,7 @@ resilience4j:
         minimumNumberOfCalls: 5                             # минимум 5 вызовов, прежде чем принимать решение
         permittedNumberOfCallsInHalfOpenState: 3            # в полуоткрытом состоянии пробуем 3 запроса
         automaticTransitionFromOpenToHalfOpenEnabled: true  # автоматически пробовать через N секунд
-        waitDurationInOpenState: 5s                         # сколько ждать перед попыткой восстановления
+        waitDurationInOpenState: 30s                         # сколько ждать перед попыткой восстановления
         failureRateThreshold: 50                            # при 50% ошибок размыкаем цепь
       orderService:
         registerHealthIndicator: true
@@ -217,7 +294,7 @@ resilience4j:
         minimumNumberOfCalls: 5
         permittedNumberOfCallsInHalfOpenState: 3
         automaticTransitionFromOpenToHalfOpenEnabled: true
-        waitDurationInOpenState: 5s
+        waitDurationInOpenState: 30s
         failureRateThreshold: 50
       kitchenService:
         registerHealthIndicator: true
@@ -225,7 +302,7 @@ resilience4j:
         minimumNumberOfCalls: 5
         permittedNumberOfCallsInHalfOpenState: 3
         automaticTransitionFromOpenToHalfOpenEnabled: true
-        waitDurationInOpenState: 5s
+        waitDurationInOpenState: 30s
         failureRateThreshold: 50
       paymentService:
         registerHealthIndicator: true
@@ -233,8 +310,20 @@ resilience4j:
         minimumNumberOfCalls: 5
         permittedNumberOfCallsInHalfOpenState: 3
         automaticTransitionFromOpenToHalfOpenEnabled: true
-        waitDurationInOpenState: 5s
+        waitDurationInOpenState: 30s
         failureRateThreshold: 50
+
+
+  # Retry настройки
+  retry:
+    configs:
+      default:
+        maxAttempts: 3
+        waitDuration: 500ms
+        retryExceptions:
+          - org.springframework.web.reactive.function.client.WebClientResponseException$ServiceUnavailable
+          - java.net.ConnectException
+          - java.net.SocketTimeoutException
 
 # Actuator
 # мониторинг и наблюдаемость системы.
@@ -245,6 +334,9 @@ management:
         include: health,info,metrics,prometheus
       base-path: /actuator
   metrics:
+    # метрики RESILIENCE4J
+    enable:
+      resilience4j: true
     tags:
       application: gateway-service    # добавляет тег ко всем метрикам
   tracing:
@@ -268,5 +360,6 @@ logging:
     com.restaurant.gateway_service: DEBUG
     org.springframework.cloud.gateway: INFO
     org.springframework.security: DEBUG
+    org.springframework.data.redis: DEBUG
 
 
