@@ -41,6 +41,8 @@ eureka:
     enabled: false
 
 logging:
+  file:
+    path: logs/test
   level:
     com.restaurant: DEBUG
 

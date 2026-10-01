@@ -70,6 +70,8 @@ eureka:
 
 # В dev режиме включаем DEBUG логи
 logging:
+  file:
+    path: logs/dev
   level:
     com.restaurant: DEBUG               # Сервисы
     org.hibernate.SQL: DEBUG            # SQL запросы Hibernate

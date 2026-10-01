@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
+
+    <!-- разделяем папки для логов  -->
+    <springProperty scope="context" name="APP_NAME"
+                    source="spring.application.name"
+                    defaultValue="app"/>
+    <springProperty scope="context" name="LOG_PATH"
+                    source="logging.file.path"
+                    defaultValue="logs"/>
+
     <!-- Консоль выводит JSON, а не текст (JSON для Promtail)   -->
     <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
         <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
@@ -65,7 +74,8 @@
 
     <!-- Файловый аппендер (JSON)-->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>logs/${spring.application.name:-app}.log</file>
+        <!-- logs/${spring.application.name:-app}.log -->
+        <file>${LOG_PATH}/${APP_NAME}.log</file>
 
         <!-- пишем только INFO и выше ===== -->
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
@@ -73,7 +83,8 @@
         </filter>
 
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>logs/${spring.application.name:-app}.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <!-- <fileNamePattern>logs/${spring.application.name:-app}.%d{yyyy-MM-dd}.log</fileNamePattern> -->
+            <fileNamePattern>${LOG_PATH}/${APP_NAME}.%d{yyyy-MM-dd}.log</fileNamePattern>
             <maxHistory>7</maxHistory>
         </rollingPolicy>
 

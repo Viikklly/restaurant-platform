@@ -398,7 +398,7 @@ logging:
   # level: уровень логирования для разных пакетов
   level:
 
-    com.restaurant: INFO
+    com.restaurant: DEBUG
     # OFF - ничего не логировать
     # ERROR - только ошибки
     # WARN - ошибки + предупреждения
