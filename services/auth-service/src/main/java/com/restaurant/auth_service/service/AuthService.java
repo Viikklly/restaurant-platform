@@ -59,6 +59,8 @@ public class AuthService {
                 .role(Role.ROLE_USER)
                 .build();
 
+                log.info("Юзер создан");
+
         /// Сохраняем в БД
         User savedUser = userRepository.save(user);
         log.info("User registered successfully with id: {}", savedUser.getId());

@@ -6,8 +6,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -102,12 +102,18 @@ public class SecurityConfig {
     /// Через номер телефона/SMS (Provider 2)
     /// Через QR-код (Provider 3)
     /// AuthenticationManager попробует провайдеров по очереди, пока один не подтвердит.
-    @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
-        return config.getAuthenticationManager();   /// Spring Boot автоматически создаёт AuthenticationManager, который:
+    ///@Bean
+    ///public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+       /// return config.getAuthenticationManager();   /// Spring Boot автоматически создаёт AuthenticationManager, который:
                                                     /// Обнаруживает все AuthenticationProvider бины
                                                     ///Связывает их с глобальной конфигурацией
                                                     ///Настраивает цепочки провайдеров
+    ///}
+
+
+    @Bean
+    public AuthenticationManager authenticationManager() {
+        return new ProviderManager(authenticationProvider());
     }
 
     /// Алгоритм хеширования паролей.
