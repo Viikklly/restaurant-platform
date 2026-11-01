@@ -2,17 +2,18 @@
 
 Высоконагруженная микросервисная платформа для автоматизации работы и управления заказами в ресторане. 
 Система спроектирована на базе микросервисной архитектуры с асинхронным взаимодействием, распределенными транзакциями, 
-кэшированием, централизованной маршрутизацией и надежными интеграционными тестами.
+кэшированием, централизованной маршрутизацией, интеграционными и нагрузочными тестами.
 
 ## Стек технологий и инструменты
 
 * **Backend:** Java 17, Spring Boot 3
 * **Микросервисы:** Spring Cloud Gateway, Eureka Discovery, Spring Cloud Config Service
 * **Обмен сообщениями:** Apache Kafka (паттерн Saga)
-* **Базы данных и кэширование:** PostgreSQL, Redis
-* **Безопасность:** Spring Security, JWT (JSON Web Tokens)
-* **Тестирование:** JUnit 5, Testcontainers (PostgreSQL, Kafka)
+* **Базы данных и кэширование:** PostgreSQL, Redis, HikariCP
+* **Безопасность:** Spring Security, JWT (JSON Web Tokens), BCrypt
+* **Тестирование:** JUnit 5, Testcontainers (PostgreSQL, Kafka), K6(нагрузочное тестирование), Jmeter
 * **DevOps:** Docker, Docker Compose
+* **Monitoring:** Grafana, Prometheus, Promtail
 
 ---
 
@@ -43,9 +44,9 @@
 Вся инфраструктура и сервисы могут быть быстро развернуты с помощью готового автоматического скрипта:
 
 1. Склонируйте репозиторий https://github.com/Viikklly/restaurant-platform/tree/dev_T и перейдите в корневую директорию проекта.
-2. Запустите скрипт автоматизации через PowerShell:
-   ```powershell
-   ./restaurant-platform/start.ps1
+2. Запустите скрипт автоматизации через Bash:
+   ```bash
+   ./restaurant-platform/start.sh
    ```
 3. Выберите **Пункт 1** в интерактивном меню консоли, чтобы автоматически собрать проект и запустить все сервисы через Docker Compose.
 
