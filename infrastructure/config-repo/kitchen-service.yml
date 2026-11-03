@@ -1,3 +1,5 @@
+# restaurant-platform/infrastructure/config-repo/kitchen-service.yml
+
 server:
   port: 8083
 
@@ -13,14 +15,17 @@ spring:
   
   jpa:
     hibernate:
-      ddl-auto: update
-      default_schema: kitchen_schema
+      ddl-auto: validate
+
   
   kafka:
     bootstrap-servers: kafka:29092
     consumer:
       group-id: kitchen-group
 
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.yaml
 
 eureka:
   client:

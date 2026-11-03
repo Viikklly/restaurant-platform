@@ -1,0 +1,16 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-create-indexes
+      author: dev-team
+      changes:
+        - createIndex:
+            schemaName: kitchen_schema
+            tableName: tickets
+            indexName: idx_tickets_status
+            columns:
+              - column: { name: status }
+      rollback:
+        - dropIndex:
+            schemaName: kitchen_schema
+            tableName: tickets
+            indexName: idx_tickets_status

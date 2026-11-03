@@ -38,6 +38,10 @@ class KitchenServiceApplicationTests {
 		registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
 		registry.add("spring.jpa.properties.hibernate.dialect", () -> "org.hibernate.dialect.PostgreSQLDialect");
 
+
+        // отключаем Liquibase — схему создаёт Hibernate create-drop
+        registry.add("spring.liquibase.enabled", () -> "false");
+
 		// Отключаем Redis для теста
 		registry.add("spring.data.redis.host", () -> "localhost");
 		registry.add("spring.data.redis.port", () -> "63790");

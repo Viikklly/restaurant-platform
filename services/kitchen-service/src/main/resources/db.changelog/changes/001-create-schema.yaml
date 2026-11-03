@@ -1,0 +1,10 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-schema
+      author: dev-team
+      changes:
+        - createSchema:
+            schemaName: kitchen_schema
+      rollback:
+        - dropSchema:
+            schemaName: kitchen_schema

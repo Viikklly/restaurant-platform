@@ -1,4 +1,4 @@
-# application-test.yml (для order-service)
+# application-test.yml (для kitchen-service)
 eureka:
   client:
     enabled: false
@@ -13,6 +13,10 @@ spring:
         enabled: false
 
   # НЕ УКАЗЫВАЕМ datasource здесь — он будет подставлен из @DynamicPropertySource
+
+  # Отключаем Liquibase в тестах — схему создаёт Hibernate create-drop/update
+  liquibase:
+    enabled: false
 
   jpa:
     hibernate:
@@ -36,6 +40,6 @@ spring:
 logging:
   level:
     org.springframework: WARN
-    com.restaurant.order_service: DEBUG
+    com.restaurant.kitchen_service: DEBUG
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
