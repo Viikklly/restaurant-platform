@@ -10,3 +10,6 @@ services/auth-service/logs/app.log
 services/gateway-service/logs/app.log
 /services/gateway-service/logs/
 /services/auth-service/logs/
+/performance-tests/jmeter/README-JMTR.md
+/performance-tests/jmeter/results/
+/performance-tests/k6/results/

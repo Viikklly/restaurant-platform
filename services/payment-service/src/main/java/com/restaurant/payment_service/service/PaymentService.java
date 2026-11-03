@@ -95,8 +95,10 @@ public class PaymentService {
             /// Сохраняем в Redis кэш
             cacheTransaction(transaction);
 
-            /// Очищаем кэши списков (так как появилась новая транзакция)
-            clearListCaches(event.getUserId(), event.getOrderId());
+            /// Точечная инвалидация: user и order.
+            /// payments:all НЕ инвалидируем — живёт по TTL,
+            /// потому что это админский эндпоинт, и findAll() на большой таблице дорогой.
+            invalidateUserAndOrderCaches(event.getUserId(), event.getOrderId());
 
             /// Отправляем в соответствующий топик
             kafkaTemplate.send(topic, result);
@@ -150,9 +152,11 @@ public class PaymentService {
         log.info("Загрузка всех транзакций из БД");
         List<PaymentTransaction> transactions = paymentTransactionRepository.findAll();
 
-        /// Сохраняем в кэш на 2 мин
-        redisService.saveWithExpire(cacheKey, transactions, 120);
-        log.info("Список всех транзакций сохранен в кэш ({} записей)", transactions.size());
+        /// TTL 30s — компромисс между свежестью и нагрузкой на БД.
+        /// С 120s при активном потоке заказов кэш всё равно инвалидировался раньше,
+        /// а без инвалидации 120s — слишком устаревшие данные.
+        redisService.saveWithExpire(cacheKey, transactions, 30);
+        log.info("Список всех транзакций сохранён в кэш на 30s ({} записей)", transactions.size());
 
         return transactions;
     }
@@ -254,5 +258,19 @@ public class PaymentService {
         redisService.delete("payments:order:" + orderId);
 
         log.info("Очищены кэши списков для user#{}, order#{}", userId, orderId);
+    }
+
+    /**
+     * Точечная инвалидация кэшей user/order.
+     * НЕ инвалидирует "payments:all" — это админский эндпоинт,
+     * он обновляется по TTL ( getAllTransactions: 30s).
+     * Если инвалидировать "payments:all" на каждую оплату — при 5+ rps
+     *  GET /payments всегда идёт в findAll().
+     */
+    private void invalidateUserAndOrderCaches(Long userId, Long orderId) {
+        redisService.delete("payments:user:" + userId);
+        redisService.delete("payments:order:" + orderId);
+        log.debug("Invalidated user#{}, order#{} caches (payments:all relies on TTL)",
+                userId, orderId);
     }
 }

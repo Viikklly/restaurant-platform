@@ -1,9 +1,18 @@
 # настройка Grafana
 apiVersion: 1
 
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+  - name: Loki
+    orgId: 1
+  - name: Jaeger
+    orgId: 1
+
 datasources:
   # Prometheus
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy          # Grafana проксирует запросы к Prometheus
     url: http://prometheus:9090
@@ -30,6 +39,7 @@ datasources:
 
   # Loki
   - name: Loki
+    uid: loki
     type: loki
     access: proxy
     url: http://loki:3100

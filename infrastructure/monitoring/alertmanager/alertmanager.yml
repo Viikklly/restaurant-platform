@@ -7,12 +7,10 @@ route:
 
 receivers:
   - name: 'default-receiver'
-    # Раскомментируйте и настройте нужный способ отправки
-    # slack_configs:
-    #   - api_url: 'https://hooks.slack.com/services/...'
-    #     channel: '#alerts'
-    # email_configs:
-    #   - to: 'team@example.com'
+    webhook_configs:
+      - url: 'http://host.docker.internal:9999/alerts'
+        send_resolved: true
+        max_alerts: 10
 
 inhibit_rules:
   - source_match:

@@ -18,30 +18,29 @@ scrape_configs:
     docker_sd_configs:
       - host: unix:///var/run/docker.sock             # Подключается к Docker
         refresh_interval: 5s                          # Проверяет новые контейнеры каждые 5 секунд
+
     relabel_configs:
       - source_labels: [__meta_docker_container_name]
         regex: '/(.*)'
         target_label: container
+
       - source_labels: [__meta_docker_container_image]
         regex: '([^:]+):.*'
         target_label: image
 
-      - source_labels: [ __meta_docker_container_name ]
-        regex: '.*-(auth-service|order-service|kitchen-service|payment-service|gateway-service|discovery-service|config-service)'
+      # Извлекаем service из имени контейнера (из /restaurant-order-service получаем order-service)
+      - source_labels: [__meta_docker_container_name]
+        regex: '/restaurant-(.*)'
         target_label: service
         replacement: '${1}'
 
-
-      - source_labels: [ __meta_docker_container_name ]
-        regex: 'restaurant-([a-z-]+)-.*'
-        target_label: service
-        replacement: '${1}'
-
-      - source_labels: [ __meta_docker_container_name ]
+      - source_labels: [__meta_docker_container_name]
         target_label: job
         replacement: "docker"
 
     pipeline_stages:
+      # 1. Docker-обёртка. Docker сам оборачивает stdout контейнера
+      # в JSON с полями log/stream/time. Этот парсинг работает для всех контейнеров.
       - json:
           expressions:
             log: log
@@ -53,21 +52,40 @@ scrape_configs:
           expressions:
             container_name: container_name
             image_name: image_name
-      - json:
-          source: log
-          expressions:
-            level: level
-            timestamp: timestamp
-            message: message
-            traceId: traceId
-            correlationId: correlationId
-            application: application
-            mdc: mdc
-      - labels:
-          level: level
-          #service: application
-      - timestamp:
-          source: timestamp
-          format: RFC3339Nano
-      - labels:
-          environment: restaurant
+
+      # 2. Если это нагрузочный контейнер — парсим k6/Gatling/JMeter
+      - match:
+          selector: '{container=~"restaurant-k6|restaurant-gatling|restaurant-jmeter"}'
+          stages:
+            - regex:
+                source: log
+                expression: '^(?P<level>INFO|WARN|ERROR|DEBUG)\[(?P<ts>[^\]]+)\]\s+(?P<message>.*)$'
+            - labels:
+                level: level
+
+      # 3. Spring-сервисы: парсим JSON (если logback пишет JSON в stdout)
+      - match:
+          selector: '{container!~"restaurant-k6|restaurant-gatling|restaurant-jmeter"}'
+          stages:
+            # Пытаемся распарсить как JSON. Если не получится — лог не потеряется,
+            # а просто уйдет в Loki в виде сырой строки.
+            - json:
+                source: log
+                expressions:
+                  level: level
+                  timestamp: timestamp
+                  message: message
+                  traceId: traceId
+                  correlationId: correlationId
+                  application: application
+                  mdc: mdc
+            - labels:
+                level: level
+                traceId: traceId
+                correlationId: correlationId
+            # Оставляем RFC3339, чтобы избежать ошибок с наносекундами, если формат отличается
+            - timestamp:
+                source: timestamp
+                format: RFC3339
+            - labels:
+                environment: restaurant

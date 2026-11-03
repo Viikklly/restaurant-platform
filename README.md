@@ -9,10 +9,11 @@
 * **Backend:** Java 17, Spring Boot 3
 * **Микросервисы:** Spring Cloud Gateway, Eureka Discovery, Spring Cloud Config Service
 * **Обмен сообщениями:** Apache Kafka (паттерн Saga)
-* **Базы данных и кэширование:** PostgreSQL, Redis
+* **Базы данных и кэширование:** PostgreSQL, Redis, HikariCP
 * **Безопасность:** Spring Security, JWT (JSON Web Tokens)
 * **Тестирование:** JUnit 5, Testcontainers (PostgreSQL, Kafka)
 * **DevOps:** Docker, Docker Compose
+* **Monitoring:** Prometheus, Grafana, Loki, Promtail, Alertmanager, Jaeger (трассировка)
 
 ---
 

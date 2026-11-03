@@ -1,0 +1,70 @@
+# docker-compose.loadtest.yml
+# Генераторы нагрузки для тестирования.
+
+# Использование:
+#   docker-compose -f docker-compose.loadtest.yml up -d
+#   docker-compose -f docker-compose.loadtest.yml down
+
+# !!! основной стек должен быть уже запущен (docker-compose up -d),
+# чтобы существовала сеть restaurant-network.
+
+services:
+
+
+  # k6
+  k6:
+    image: grafana/k6:latest
+    container_name: restaurant-k6
+    ports:
+      - "5665:5665"   # добавлено для ВЕБ-ДАШБОРДА
+    volumes:
+      - ./performance-tests/k6:/scripts:ro
+      - ./performance-tests/k6/results:/results
+    environment:
+      BASE_URL_ORDER:        http://order-service:8082
+      BASE_URL_KITCHEN:      http://kitchen-service:8083
+      BASE_URL_PAYMENT:      http://payment-service:8084
+      BASE_URL_GATEWAY:      http://gateway-service:8090
+
+
+      K6_PROMETHEUS_RW_SERVER_URL: "http://prometheus:9090/api/v1/write"
+      K6_PROMETHEUS_RW_TREND_STATS: "p(50),p(95),p(99),avg"
+
+      K6_WEB_DASHBOARD:            "true"
+      K6_WEB_DASHBOARD_HOST:       "0.0.0.0"
+      K6_WEB_DASHBOARD_PORT:       "5665"
+      K6_WEB_DASHBOARD_EXPORT:     "/results/report.html"
+    networks:
+      - restaurant-network
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+
+  # Gatling
+  gatling:
+    image: denvazh/gatling:latest
+    container_name: restaurant-gatling
+    volumes:
+      - ./performance-tests/gatling:/opt/gatling/user-files
+      - ./performance-tests/gatling/results:/opt/gatling/results
+    networks:
+      - restaurant-network
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+
+  # JMeter — блокирующий
+
+  jmeter:
+    image: justb4/jmeter:latest
+    container_name: restaurant-jmeter
+    volumes:
+      - ./performance-tests/jmeter:/tests:ro
+      - ./performance-tests/jmeter/results:/results
+    networks:
+      - restaurant-network
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+# Подключаемся к сети основного стека.
+networks:
+  restaurant-network:
+    external: true
+    name: restaurant-platform_restaurant-network
