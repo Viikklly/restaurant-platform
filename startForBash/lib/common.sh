@@ -104,3 +104,49 @@ check_health() {
     code=$(curl -s -o /dev/null -w "%{http_code}" -m "$timeout" "$url" 2>/dev/null)
     [ "$code" == "200" ]
 }
+
+# Ожидание healthy-статуса Docker-контейнера.
+# Использует healthcheck, определённый в docker-compose.yml.
+# $1 — имя контейнера (например, restaurant-postgres-order)
+# $2 — максимум секунд ожидания (по умолчанию 60)
+wait_for_health() {
+    local container="$1"
+    local max_attempts="${2:-60}"
+    local i=0
+    local status=""
+
+    write_step "Ожидаем healthy: $container"
+    while [ "$i" -lt "$max_attempts" ]; do
+        status=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "not_found")
+
+        case "$status" in
+            healthy)
+                write_success "$container готов (${i}s)"
+                return 0
+                ;;
+            not_found)
+                write_error "$container не найден"
+                return 1
+                ;;
+        esac
+
+        i=$((i + 1))
+        sleep 1
+    done
+
+    write_error "$container не стал healthy за ${max_attempts}s (текущий: $status)"
+    return 1
+}
+
+# Ожидание сразу нескольких контейнеров последовательно.
+# $1 — таймаут на каждый контейнер
+# $@ (со 2-го) — имена контейнеров
+wait_for_health_all() {
+    local timeout="${1:-60}"
+    shift
+    local c
+    for c in "$@"; do
+        wait_for_health "$c" "$timeout" || return 1
+    done
+    return 0
+}

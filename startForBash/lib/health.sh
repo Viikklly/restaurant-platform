@@ -34,7 +34,7 @@ health_monitoring() {
     local monitoring=(
         "Prometheus:9090/-/healthy"
         "Grafana:3000/api/health"
-        "Jaeger:16686/api/services"
+        "Jaeger:16686/"
     )
     local svc name path all_ok=0
     for svc in "${monitoring[@]}"; do
@@ -57,7 +57,7 @@ health_monitoring_full() {
         "Grafana:3000/api/health:200"
         "Alertmanager:9093/-/healthy:200"
         "Loki:3100/ready:200"
-        "Jaeger:16686/api/services:200"
+        "Jaeger:16686/:200"
     )
     local svc name path expected all_ok=0
     for svc in "${monitoring[@]}"; do

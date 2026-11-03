@@ -601,31 +601,23 @@ services:
 
   # JAEGER
   jaeger:
-    image: jaegertracing/jaeger:latest # Или зафиксируйте версию: 2.15.0
+    image: jaegertracing/all-in-one:1.62.0
     container_name: restaurant-jaeger
     ports:
-      # UI и API
-      - "16686:16686"
-      # Zipkin API (для Spring Boot)
-      - "9411:9411"
-      # OTLP (OpenTelemetry) для современных клиентов
-      - "4317:4317"   # gRPC
-      - "4318:4318"   # HTTP
+      - "16686:16686"   # UI + Query API
+      - "9411:9411"     # Zipkin
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
     environment:
-      # Используем память для хранения (быстро и без прав)
-      - JAEGER_STORAGE_TYPE=memory
-      # Включаем все коллекторы
-      - JAEGER_COLLECTOR_OTLP_ENABLED=true
-      - JAEGER_OTLP_HOST=0.0.0.0
+      - SPAN_STORAGE_TYPE=memory
+      - COLLECTOR_OTLP_ENABLED=true
     networks:
       - restaurant-network
     restart: unless-stopped
-    healthcheck:
-      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:16686/api/services" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
+    # Healthcheck убран намеренно:
+    # в all-in-one:1.62 нет wget/curl/nc внутри образа,
+    # а Jaeger не критичен для старта стека.
+    # Готовность проверяется в stack.sh через wait_for_service.
 
 # СЕТИ
 networks:
