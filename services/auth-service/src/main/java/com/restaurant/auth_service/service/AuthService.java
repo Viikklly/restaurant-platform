@@ -85,40 +85,29 @@ public class AuthService {
         log.info("Попытка входа в систему по email: {}", request.getEmail());
 
         try {
-            /// Аутентифицируем пользователя
-            Authentication authentication = authenticationManager.authenticate( /// authenticationManager.authenticate()	Запускает процесс проверки
-                    new UsernamePasswordAuthenticationToken(  /// UsernamePasswordAuthenticationToken	Обёртка для email и пароля
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
                             request.getEmail(),
                             request.getPassword()
                     )
             );
 
-            log.info("Попытка входа в систему по email: {}", request.getEmail());
-
-            /// Получаем пользователя
             UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-            log.info("Попытка входа в систему по email: {}", request.getEmail());
 
-            /// Генерируем токены
             String accessToken = jwtService.generateToken(userDetails);
-            log.info("Попытка входа в систему по email: {}", request.getEmail());
-
-
             String refreshToken = jwtService.generateRefreshToken(userDetails);
 
-            /// Счетчик отправленных сообщений +1
             kafkaMetrics.incrementProduced();
-            /// Cчетчик входов + 1
             kafkaMetrics.incrementLogin();
 
             log.info("Пользователь успешно вошел в систему: {}", request.getEmail());
 
             return new LoginResponseDTO(accessToken, refreshToken);
-        } catch (Exception e) {
-            // Kafka метрики
+        } catch (AuthenticationException e) {
+            // AuthenticationException — ожидаемое поведение (неверный пароль),
+            // не логируем как ERROR, пробрасываем дальше → authenticationEntryPoint вернёт 401
             kafkaMetrics.incrementAuthError();
-
-            log.error("Ошибка входа для {}: {}", request.getEmail(), e.getMessage());
+            log.warn("Неудачная попытка входа для {}: {}", request.getEmail(), e.getMessage());
             throw e;
         }
     }

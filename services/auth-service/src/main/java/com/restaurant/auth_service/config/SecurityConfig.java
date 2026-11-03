@@ -1,9 +1,11 @@
 package com.restaurant.auth_service.config;
 
-
+import com.restaurant.auth_service.service.CustomUserDetailsService;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.ProviderManager;
@@ -12,112 +14,84 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-/*
- * Spring Security: сейчас все запросы permitAll (без проверки JWT в цепочке).
- *  Включить JWT-фильтр: app.security.jwt-filter-enabled=true и настройка authorizeHttpRequests.
- */
 
 @Configuration
-@EnableWebSecurity      /// Включает Spring Security для веб-приложения
+@EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final UserDetailsService userDetailsService;
+    private final CustomUserDetailsService userDetailsService;
 
-    /// Это цепочка фильтров, через которые проходит каждый HTTP-запрос
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-
-
-        System.out.println(" SECURITY CONFIG IS BEING LOADED");
-
         http
-                /// ОТКЛЮЧАЕМ так как
-                /// CSRF защита нужна для браузерных приложений с cookies
-                /// А приложение REST API с JWT, токен не хранится в cookies автоматически
+                // CSRF отключён для REST API (stateless, JWT)
                 .csrf(AbstractHttpConfigurer::disable)
-                /// Настраиваем авторизацию
-                .authorizeHttpRequests(auth -> auth
-                        /// Открытые эндпоинты (без токена)
-//                        .requestMatchers(
-//                                "/auth/*",   // для удобства тестирования разработки
-//                                "/auth/register",
-//                                "/auth/login",
-//                                "/auth/refresh",
-//                                "/auth/test",
-//                                "/actuator/health",
-//                                "/actuator/info"
-//                        )
-                                /// Всё остальное требует аутентификации
-                        .anyRequest()///  разрешаем все запросы без аутентификации временно, для разработки
-                                .permitAll()
 
-                        ///.authenticated()
+                // Явные правила: auth и actuator открыты
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(
+                                "/auth/**",
+                                "/actuator/**",
+                                "/error",
+                                "/h2-console/**"
+                        ).permitAll()
+                        // Для разработки всё открыто.
+                        // В будущем с JWT-фильтром: .anyRequest().authenticated()
+                        .anyRequest().permitAll()
                 )
 
-                /// Ставим STATELESS (не храним сессии, так как REST API с JWT)
+                // STATELESS: не храним сессии
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
-                /// Регистрируем AuthenticationProvider
-                /// Это механизм, который проверяет логин и пароль.
-                .authenticationProvider(authenticationProvider());
-                /// Добавляем JWT фильтр ПЕРЕД стандартным фильтром аутентификации
-                //.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
+                // 401 для BadCredentials, 403 для AccessDenied
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding("UTF-8");
+                            response.getWriter().write(
+                                    "{\"status\":401,\"error\":\"Unauthorized\",\"message\":\""
+                                            + authException.getMessage() + "\"}"
+                            );
+                        })
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding("UTF-8");
+                            response.getWriter().write(
+                                    "{\"status\":403,\"error\":\"Forbidden\",\"message\":\"Access denied\"}"
+                            );
+                        })
+                )
 
+                // Провайдер аутентификации
+                .authenticationProvider(authenticationProvider())
 
-//        http
-//                .csrf(AbstractHttpConfigurer::disable)
-//                .authorizeHttpRequests(auth ->
-//                        auth
-//                                .anyRequest().permitAll()  // ← открываем всё
-//                );
+                // Для H2 console (local-профиль)
+                .headers(headers -> headers.frameOptions(frame -> frame.disable()));
 
         return http.build();
     }
 
-    /// Проверяет логин и пароль.
-    /// Связывает UserDetailsService и PasswordEncoder
     @Bean
     public AuthenticationProvider authenticationProvider() {
-        /// DaoAuthenticationProvider	    Проверка по БД (UserDetailsService + PasswordEncoder)
-        /// LdapAuthenticationProvider	    Проверка через LDAP/Active Directory
-        /// JaasAuthenticationProvider	    Java Authentication and Authorization Service
-        /// CustomAuthenticationProvider	Своя логика (например, SMS-код)
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
         authProvider.setUserDetailsService(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
         return authProvider;
     }
 
-    /// аутентификации Spring Security
-    /// может управлять несколькими AuthenticationProvider'ами
-    /// Пример: Можно настроить, чтобы пользователь мог войти:
-    /// Через email/пароль (Provider 1)
-    /// Через номер телефона/SMS (Provider 2)
-    /// Через QR-код (Provider 3)
-    /// AuthenticationManager попробует провайдеров по очереди, пока один не подтвердит.
-    ///@Bean
-    ///public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
-       /// return config.getAuthenticationManager();   /// Spring Boot автоматически создаёт AuthenticationManager, который:
-                                                    /// Обнаруживает все AuthenticationProvider бины
-                                                    ///Связывает их с глобальной конфигурацией
-                                                    ///Настраивает цепочки провайдеров
-    ///}
-
-
     @Bean
-    public AuthenticationManager authenticationManager() {
-        return new ProviderManager(authenticationProvider());
+    public AuthenticationManager authenticationManager(AuthenticationProvider authenticationProvider) {
+        return new ProviderManager(authenticationProvider);
     }
 
-    /// Алгоритм хеширования паролей.
-    /// Защищает пароли в БД
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();

@@ -1,0 +1,38 @@
+databaseChangeLog:
+  - changeSet:
+      id: 002-seed-test-users
+      author: dev-team
+      changes:
+        # BCrypt-хэш для пароля "password123"
+        # (сгенерирован один раз, одинаковый для всех трёх пользователей)
+        - insert:
+            tableName: users
+            columns:
+              - column: { name: email,    value: "alice@test.com" }
+              - column: { name: username, value: "alice" }
+              - column:
+                  name: password
+                  value: "$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVEFDa"
+              - column: { name: role,     value: "ROLE_USER" }
+        - insert:
+            tableName: users
+            columns:
+              - column: { name: email,    value: "bobi@test.com" }
+              - column: { name: username, value: "bobi" }
+              - column:
+                  name: password
+                  value: "$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVEFDa"
+              - column: { name: role,     value: "ROLE_USER" }
+        - insert:
+            tableName: users
+            columns:
+              - column: { name: email,    value: "cap@test.com" }
+              - column: { name: username, value: "cap" }
+              - column:
+                  name: password
+                  value: "$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVEFDa"
+              - column: { name: role,     value: "ROLE_ADMIN" }
+      rollback:
+        - delete:
+            tableName: users
+            where: "email IN ('alice@test.com', 'bobi@test.com', 'cap@test.com')"

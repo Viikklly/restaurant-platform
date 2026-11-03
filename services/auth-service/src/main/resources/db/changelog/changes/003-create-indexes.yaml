@@ -1,0 +1,12 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-create-indexes
+      author: dev-team
+      changes:
+        - createIndex:
+            tableName: users
+            indexName: idx_users_role
+            columns:
+              - column: { name: role }
+      rollback:
+        - dropIndex: { tableName: users, indexName: idx_users_role }

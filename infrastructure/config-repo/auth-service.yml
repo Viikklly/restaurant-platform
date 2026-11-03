@@ -1,4 +1,4 @@
-
+# restaurant-platform/infrastructure/config-repo/auth-service.yml
 # application.yml + auth-service.yml = полный конфиг
 
 
@@ -26,8 +26,12 @@ spring:
   # НАСТРОЙКИ JPA
   jpa:
     hibernate:
-      ddl-auto: update        # update - создаёт/обновляет таблицы при запуске
+      ddl-auto: validate
     database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.yaml
 
 eureka:
   client:

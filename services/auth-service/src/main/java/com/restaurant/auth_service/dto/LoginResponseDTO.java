@@ -22,5 +22,6 @@ public class LoginResponseDTO {
     public LoginResponseDTO(String accessToken, String refreshToken) {
         this.accessToken = accessToken;
         this.refreshToken = refreshToken;
+        this.tokenType = "Bearer";
     }
 }
