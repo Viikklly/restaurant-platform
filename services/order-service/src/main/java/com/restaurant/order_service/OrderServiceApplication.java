@@ -32,7 +32,7 @@ public class OrderServiceApplication {
 	 * CommandLineRunner выполняется ПОСЛЕ запуска Spring контекста
 	 * Нужно для отладки, что бы при запуске приложения Item(меню) не было пустым
 	 */
-	@Bean
+/*	@Bean
 	public CommandLineRunner initDatabase() {
 
 		return args -> {
@@ -69,6 +69,6 @@ public class OrderServiceApplication {
 				log.info("Меню уже содержит {} блюд", itemRepository.count());
 			}
 		};
-	}
+	}*/
 
 }

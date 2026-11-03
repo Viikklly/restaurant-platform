@@ -564,12 +564,8 @@ services:
     restart: unless-stopped
     depends_on:
       - loki
-    healthcheck:
-      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:9080/ready" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
+      # Healthcheck убран: в образе grafana/promtail:latest нет wget/curl.
+      # Готовность проверяется через monitoring_check (HTTP-запрос к :9080/ready)
 
   # GRAFANA
   grafana:
@@ -611,6 +607,7 @@ services:
     environment:
       - SPAN_STORAGE_TYPE=memory
       - COLLECTOR_OTLP_ENABLED=true
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
     networks:
       - restaurant-network
     restart: unless-stopped

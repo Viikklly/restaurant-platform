@@ -1,0 +1,41 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-create-items
+      author: dev-team
+      changes:
+        - createTable:
+            tableName: items
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: item_name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: item_price
+                  type: NUMERIC(10, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: item_description
+                  type: VARCHAR(500)
+              - column:
+                  name: is_available
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+        - addForeignKeyConstraint:
+            baseTableName: order_items
+            baseColumnNames: item_id
+            referencedTableName: items
+            referencedColumnNames: id
+            constraintName: fk_order_items_item
+      rollback:
+        - dropTable:
+            tableName: items

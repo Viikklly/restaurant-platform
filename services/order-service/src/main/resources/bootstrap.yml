@@ -2,16 +2,12 @@
 # подключение к Config Server ДО загрузки основного приложения
 spring:
   application:
-    name: order-service # Имя сервиса
+    name: order-service
   cloud:
     config:
-      uri: http://localhost:8888 # это для разработки
-      # uri: http://config-service:8888
       fail-fast: false
   config:
-    # Импортируем конфигурацию с Config Server
-    import: optional:configserver:${spring.cloud.config.uri}
-
+    import: optional:configserver:${CONFIG_SERVER_URL:http://config-service:8888}
 
 
 

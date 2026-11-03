@@ -1,0 +1,30 @@
+databaseChangeLog:
+  - changeSet:
+      id: 004-seed-menu-items
+      author: dev-team
+      changes:
+        - insert:
+            tableName: items
+            columns:
+              - column: { name: item_name,        value: "Пицца" }
+              - column: { name: item_price,       valueNumeric: 499.99 }
+              - column: { name: item_description, value: "Пицца с томатным соусом" }
+              - column: { name: is_available,     valueBoolean: true }
+        - insert:
+            tableName: items
+            columns:
+              - column: { name: item_name,        value: "Паста" }
+              - column: { name: item_price,       valueNumeric: 389.00 }
+              - column: { name: item_description, value: "Спагетти" }
+              - column: { name: is_available,     valueBoolean: true }
+        - insert:
+            tableName: items
+            columns:
+              - column: { name: item_name,        value: "Цезарь" }
+              - column: { name: item_price,       valueNumeric: 329.50 }
+              - column: { name: item_description, value: "Салат" }
+              - column: { name: is_available,     valueBoolean: false }
+      rollback:
+        - delete:
+            tableName: items
+            where: "item_name IN ('Пицца', 'Паста', 'Цезарь')"

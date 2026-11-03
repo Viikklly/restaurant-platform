@@ -1,4 +1,11 @@
 # application-test.yml (для order-service)
+# services/order-service/src/test/resources/application-test.yml
+
+# Spring загружает src/test/resources/application-test.yml.
+# В нём spring.cloud.config.enabled: false → Config Server не подключается.
+# config-repo/application-test.yml не подтягивается.
+# Тест использует Testcontainers PostgreSQL.
+# Liquibase накатывает миграции. ✅
 eureka:
   client:
     enabled: false
@@ -16,13 +23,18 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: true
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
 
   kafka:
     bootstrap-servers: ""

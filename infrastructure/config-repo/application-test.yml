@@ -1,11 +1,22 @@
 # SPRING_PROFILES_ACTIVE=test
+# restaurant-platform/infrastructure/config-repo/application-test.yml
 # Для юнит и интеграционных тестов
+#
+# Spring загружает application-test.yml из src/main/resources (если есть).
+#Подключается к Config Server (config-service:8888).
+#Config Server отдаёт config-repo/application-test.yml (H2).
+#Liquibase должен быть отключён, потому что H2.
+
 
 
 spring:
   config:
     activate:
       on-profile: test
+
+  # отключаем Liquibase в тестах (H2 + create-drop)
+  liquibase:
+    enabled: false
 
   # H2 - легковесная in-memory база данных
   # Не требует установки, работает в памяти

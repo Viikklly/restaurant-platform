@@ -1,0 +1,42 @@
+databaseChangeLog:
+  - changeSet:
+      id: 005-create-indexes
+      author: dev-team
+      changes:
+        - createIndex:
+            tableName: orders
+            indexName: idx_orders_user_id
+            columns:
+              - column: { name: user_id }
+        - createIndex:
+            tableName: orders
+            indexName: idx_orders_status
+            columns:
+              - column: { name: status }
+        - createIndex:
+            tableName: orders
+            indexName: idx_orders_created_at
+            columns:
+              - column: { name: created_at }
+        - createIndex:
+            tableName: order_items
+            indexName: idx_order_items_order_id
+            columns:
+              - column: { name: order_id }
+        - createIndex:
+            tableName: order_items
+            indexName: idx_order_items_item_id
+            columns:
+              - column: { name: item_id }
+        - createIndex:
+            tableName: items
+            indexName: idx_items_is_available
+            columns:
+              - column: { name: is_available }
+      rollback:
+        - dropIndex: { tableName: orders,      indexName: idx_orders_user_id }
+        - dropIndex: { tableName: orders,      indexName: idx_orders_status }
+        - dropIndex: { tableName: orders,      indexName: idx_orders_created_at }
+        - dropIndex: { tableName: order_items, indexName: idx_order_items_order_id }
+        - dropIndex: { tableName: order_items, indexName: idx_order_items_item_id }
+        - dropIndex: { tableName: items,       indexName: idx_items_is_available }
