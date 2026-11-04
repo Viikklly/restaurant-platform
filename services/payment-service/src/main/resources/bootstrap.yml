@@ -2,16 +2,12 @@
 # подключение к Config Server ДО загрузки основного приложения
 spring:
   application:
-    name: payment-service # Имя сервиса
+    name: payment-service
   cloud:
     config:
-      uri: http://localhost:8888 # это для разработки
-      #uri: http://config-service:8888
       fail-fast: false
   config:
-    # Импортируем конфигурацию с Config Server
-    import: optional:configserver:${spring.cloud.config.uri}
-    #import: optional:configserver:http://config-service:8888
+    import: optional:configserver:${CONFIG_SERVER_URL:http://config-service:8888}
 
 
 

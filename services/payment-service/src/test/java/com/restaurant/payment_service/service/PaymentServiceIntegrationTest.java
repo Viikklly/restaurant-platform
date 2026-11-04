@@ -46,6 +46,7 @@ import static org.mockito.Mockito.*;
         "spring.cloud.config.enabled=false",
         "spring.kafka.bootstrap-servers=",
         "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration",
+        "spring.liquibase.enabled=false",
         "spring.jpa.hibernate.ddl-auto=update"
 })
 @Testcontainers

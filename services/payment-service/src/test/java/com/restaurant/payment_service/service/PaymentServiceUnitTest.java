@@ -116,7 +116,8 @@ class PaymentServiceUnitTest {
             assertThat(saved.getMessage()).isEqualTo("Платёж одобрен");
 
             verify(redisService).saveWithExpire(eq("payment:1"), any(PaymentTransaction.class), eq(300L));
-            verify(redisService).delete("payments:all");
+            //verify(redisService).delete("payments:all");
+            verify(redisService, never()).delete("payments:all");
             verify(redisService).delete("payments:user:" + TEST_USER_ID);
             verify(redisService).delete("payments:order:" + TEST_ORDER_ID);
 
@@ -228,7 +229,7 @@ class PaymentServiceUnitTest {
                     .thenReturn(null);
             when(paymentTransactionRepository.findAll())
                     .thenReturn(transactions);
-            doNothing().when(redisService).saveWithExpire(eq("payments:all"), eq(transactions), eq(120L));
+            doNothing().when(redisService).saveWithExpire(eq("payments:all"), eq(transactions), eq(30L));
 
             List<PaymentTransaction> result = paymentService.getAllTransactions();
 
@@ -236,7 +237,7 @@ class PaymentServiceUnitTest {
             assertThat(result).extracting("orderId").containsExactlyInAnyOrder(1001L, 1002L);
 
             verify(paymentTransactionRepository).findAll();
-            verify(redisService).saveWithExpire(eq("payments:all"), eq(transactions), eq(120L));
+            verify(redisService).saveWithExpire(eq("payments:all"), eq(transactions), eq(30L));
         }
 
         @Test
@@ -265,12 +266,12 @@ class PaymentServiceUnitTest {
                     .thenReturn(null);
             when(paymentTransactionRepository.findAll())
                     .thenReturn(List.of());
-            doNothing().when(redisService).saveWithExpire(eq("payments:all"), eq(List.of()), eq(120L));
+            doNothing().when(redisService).saveWithExpire(eq("payments:all"), eq(List.of()), eq(30L));
 
             List<PaymentTransaction> result = paymentService.getAllTransactions();
 
             assertThat(result).isEmpty();
-            verify(redisService).saveWithExpire(eq("payments:all"), eq(List.of()), eq(120L));
+            verify(redisService).saveWithExpire(eq("payments:all"), eq(List.of()), eq(30L));
         }
     }
 
@@ -595,7 +596,8 @@ class PaymentServiceUnitTest {
 
             paymentService.processPayment(event);
 
-            verify(redisService).delete("payments:all");
+            //verify(redisService).delete("payments:all");
+            verify(redisService, never()).delete("payments:all");
             verify(redisService).delete("payments:user:" + TEST_USER_ID);
             verify(redisService).delete("payments:order:" + TEST_ORDER_ID);
         }

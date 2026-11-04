@@ -1,8 +1,27 @@
-
-
 spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:docker}
-
   config:
     import: optional:configserver:${CONFIG_SERVER_URL:http://config-service:8888}
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres-payment:5432/paymentdb}
+    username: ${PAYMENT_DB_USER:postgres}
+    password: ${PAYMENT_DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+  kafka:
+    bootstrap-servers: kafka:29092
+
+payment:
+  max-amount: 10000
+  delay-ms: 2000

@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "eureka.client.enabled=false",
         "spring.cloud.discovery.enabled=false",
         "spring.cloud.config.enabled=false",
+        "spring.liquibase.enabled=false",
         "spring.jpa.hibernate.ddl-auto=update"
 })
 @Testcontainers

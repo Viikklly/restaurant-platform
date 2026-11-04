@@ -1,5 +1,9 @@
 # application-test.yml
 spring:
+  # отключаем Liquibase в тестах (схему создаёт Hibernate)
+  liquibase:
+    enabled: false
+
   # Отключаем Cloud Config
   cloud:
     config:

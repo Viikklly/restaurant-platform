@@ -38,6 +38,9 @@ class PaymentServiceApplicationTests {
 		registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
 		registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
 		registry.add("spring.jpa.properties.hibernate.dialect", () -> "org.hibernate.dialect.PostgreSQLDialect");
+
+        registry.add("spring.liquibase.enabled", () -> "false");
+
 		registry.add("spring.data.redis.host", redis::getHost);
 		registry.add("spring.data.redis.port", redis::getFirstMappedPort);
 	}
