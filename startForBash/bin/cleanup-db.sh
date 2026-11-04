@@ -2,12 +2,19 @@
 # startForBash/bin/cleanup-db.sh
 # Очистка БД после нагрузочных тестов.
 #
-# ВАЖНО: мы НЕ трогаем таблицу databasechangelog (историю миграций Liquibase).
-# TRUNCATE затрагивает только бизнес-данные. После перезапуска сервисов
-# Liquibase увидит, что все changeset'ы уже применены, и не будет их накатывать заново.
+# ВАЖНО:
+# 1. databasechangelog (история Liquibase) НЕ трогается — миграции не перезапускаются.
+# 2. Сид-данные (alice/bobi/cap в authdb, Пицца/Паста/Цезарь в orderdb.items)
+#    НЕ удаляются — Liquibase не накатит их повторно (changeset уже в databasechangelog).
+# 3. Удаляются только "нагрузочные" данные:
+#    - users с email LIKE 'load_%' (создаются k6/auth/2-register.js)
+#    - orders, order_items (orderdb)
+#    - tickets (kitchendb)
+#    - payment_transactions (paymentdb)
+#    - Redis (FLUSHALL)
+# 4. Метрики Prometheus (counter) НЕ сбрасываются — графики продолжат расти.
 #
-# СКРИПТ ЛИНЕЙНЫЙ (не обёрнут в функцию), поэтому "local" здесь использовать НЕЛЬЗЯ —
-# Bash выдаст "local: can only be used in a function".
+# СКРИПТ ЛИНЕЙНЫЙ (не обёрнут в функцию), поэтому "local" использовать НЕЛЬЗЯ.
 
 START_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB_DIR="$START_DIR/../lib"
@@ -22,8 +29,9 @@ if ! docker ps --format '{{.Names}}' | grep -q "^restaurant-postgres-auth$"; the
 fi
 
 echo "Что вы хотите очистить?"
-echo "  1) Только пользователей в AuthDB (таблица users)"
-echo "  2) ВСЕ ДАННЫЕ (AuthDB + OrderDB + KitchenDB + PaymentDB + Redis)"
+echo "  1) Только тестовых пользователей в AuthDB (email LIKE 'load_%')"
+echo "  2) ВСЕ НАГРУЗОЧНЫЕ ДАННЫЕ (Order + Kitchen + Payment + Redis + тестовые users)"
+echo "     Сид-данные (alice/bobi/cap, меню Пицца/Паста/Цезарь) СОХРАНЯЮТСЯ"
 echo "  0) Отмена"
 read -r -p "Выберите вариант (0-2): " choice
 
@@ -33,7 +41,12 @@ case "$choice" in
         write_step "Текущее количество пользователей в authdb:"
         docker exec -i restaurant-postgres-auth psql -U postgres -d authdb -t -c "SELECT count(*) FROM users;"
 
-        write_warning "Это удалит ВСЕХ пользователей (включая bobi@test.com)."
+        write_step "Количество тестовых пользователей (load_%):"
+        docker exec -i restaurant-postgres-auth psql -U postgres -d authdb -t -c \
+            "SELECT count(*) FROM users WHERE email LIKE 'load_%';"
+
+        write_warning "Это удалит только пользователей с email LIKE 'load_%'."
+        write_step "  Сид-данные (alice@test.com, bobi@test.com, cap@test.com) останутся."
         read -r -p "Вы уверены? (y/N): " confirm
 
         if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
@@ -41,36 +54,24 @@ case "$choice" in
             exit 0
         fi
 
-        write_step "Очищаем users..."
+        write_step "Удаляем тестовых пользователей (load_%)..."
         docker exec -i restaurant-postgres-auth psql -U postgres -d authdb \
-            -c "TRUNCATE TABLE users RESTART IDENTITY CASCADE;"
+            -c "DELETE FROM users WHERE email LIKE 'load_%';"
 
-        write_step "Перезапускаем auth-service..."
-        docker restart restaurant-auth-service >/dev/null
-
-        # Ждём healthcheck auth-service
-        i=0
-        ok=0
-        while [ "$i" -lt 60 ]; do
-            if check_health "http://localhost:8081/actuator/health" 2; then
-                ok=1
-                break
-            fi
-            i=$((i + 1))
-            sleep 1
-        done
-
-        if [ "$ok" -eq 1 ]; then
-            write_success "AuthDB очищена. auth-service готов."
-        else
-            write_warning "auth-service не ответил за 60s — проверь: docker logs restaurant-auth-service"
-        fi
+        write_success "Тестовые пользователи удалены. Сид-данные сохранены."
         ;;
 
     2)
         echo ""
-        write_warning "ВНИМАНИЕ: Это удалит ВСЕ данные из Auth, Order, Kitchen и Payment баз!"
-        write_warning "Все заказы, блюда, тикеты и транзакции будут удалены."
+        write_warning "ВНИМАНИЕ: Это удалит все нагрузочные данные из Order, Kitchen, Payment баз и Redis!"
+        write_warning "  - orderdb: orders, order_items (МЕНЮ items НЕ трогается)"
+        write_warning "  - kitchendb: tickets"
+        write_warning "  - paymentdb: payment_transactions"
+        write_warning "  - authdb: только users с email LIKE 'load_%'"
+        write_warning "  - Redis: FLUSHALL"
+        write_step "Сид-данные СОХРАНЯЮТСЯ:"
+        write_step "  - authdb: alice@test.com, bobi@test.com, cap@test.com"
+        write_step "  - orderdb: items (Пицца, Паста, Цезарь)"
         write_warning "Таблицы databasechangelog (история Liquibase) НЕ будут затронуты."
         write_warning "Метрики Prometheus (counter) НЕ сбрасываются — графики продолжат расти."
         write_step "  Для полного сброса метрик: ./clean.sh --all && ./start.sh full"
@@ -82,14 +83,15 @@ case "$choice" in
         fi
 
         # ---------- Auth DB ----------
-        write_step "Очищаем authdb (users)..."
+        # НЕ TRUNCATE users (удалит сид-данные alice/bobi/cap).
+        # Удаляем только тестовых, созданных k6/auth/2-register.js.
+        write_step "Очищаем authdb (тестовые пользователи load_%)..."
         docker exec -i restaurant-postgres-auth psql -U postgres -d authdb \
-            -c "TRUNCATE TABLE users RESTART IDENTITY CASCADE;"
+            -c "DELETE FROM users WHERE email LIKE 'load_%';"
 
         # ---------- Order DB ----------
-        # Один TRUNCATE для связанных таблиц: order_items и orders.
-        # RESTART IDENTITY сбрасывает последовательности.
-        # Меню (items) НЕ трогаем — оно нужно для нагрузочных тестов.
+        # Один TRUNCATE для связанных таблиц. items (меню) НЕ трогаем —
+        # без него order-create упадёт (productName='Пицца' не найдено).
         write_step "Очищаем orderdb (order_items, orders)..."
         docker exec -i restaurant-postgres-order psql -U postgres -d orderdb \
             -c "TRUNCATE TABLE order_items, orders RESTART IDENTITY CASCADE;"
@@ -108,51 +110,26 @@ case "$choice" in
         write_step "Очищаем кэш Redis..."
         docker exec -i restaurant-redis redis-cli FLUSHALL >/dev/null
 
-        # ---------- Перезапуск сервисов ----------
-        write_step "Перезапускаем auth-service, order-service, kitchen-service и payment-service..."
-        docker restart \
-            restaurant-auth-service \
-            restaurant-order-service \
-            restaurant-kitchen-service \
-            restaurant-payment-service >/dev/null
+        # ---------- Проверка, что сид-данные на месте ----------
+        write_step "Проверяем сид-данные..."
+        local_auth_count=$(docker exec -i restaurant-postgres-auth psql -U postgres -d authdb -t -c \
+            "SELECT count(*) FROM users;")
+        local_items_count=$(docker exec -i restaurant-postgres-order psql -U postgres -d orderdb -t -c \
+            "SELECT count(*) FROM items;")
 
-        # ---------- Ожидание готовности (без local!) ----------
-        write_step "Ждём готовности сервисов (healthcheck)..."
-        for s in \
-            restaurant-auth-service \
-            restaurant-order-service \
-            restaurant-kitchen-service \
-            restaurant-payment-service; do
-            # Явное соответствие контейнер → порт.
-            # Имя контейнера не заканчивается цифрой, поэтому извлечь порт
-            # через regex нельзя — используем case.
-            case "$s" in
-                restaurant-auth-service)    port=8081 ;;
-                restaurant-order-service)   port=8082 ;;
-                restaurant-kitchen-service) port=8083 ;;
-                restaurant-payment-service) port=8084 ;;
-                *)                          port=""   ;;
-            esac
+        write_step "  authdb.users: $(echo $local_auth_count | tr -d ' ')"
+        write_step "  orderdb.items: $(echo $local_items_count | tr -d ' ')"
 
-            i=0
-            ok=0
-            while [ "$i" -lt 60 ]; do
-                if [ -n "$port" ] && check_health "http://localhost:$port/actuator/health" 2; then
-                    ok=1
-                    break
-                fi
-                i=$((i + 1))
-                sleep 1
-            done
+        if [ "$(echo $local_auth_count | tr -d ' ')" -lt "3" ]; then
+            write_warning "  ⚠ Пользователей меньше 3 — возможно, сид-данные повреждены."
+            write_step "    Восстановить: пересоздать том authdb (docker-compose rm -f postgres-auth && ...)"
+        fi
+        if [ "$(echo $local_items_count | tr -d ' ')" -lt "1" ]; then
+            write_error "  ⚠ Меню items пусто! Order-create упадёт."
+            write_step "    Восстановить: пересоздать том orderdb (docker-compose rm -f postgres-order && ...)"
+        fi
 
-            if [ "$ok" -eq 1 ]; then
-                write_success "$s готов"
-            else
-                write_warning "$s не ответил за 60s — проверь: docker logs $s"
-            fi
-        done
-
-        write_success "Все базы данных и Redis очищены. Сервисы перезапущены."
+        write_success "Нагрузочные данные очищены. Сид-данные сохранены."
         ;;
 
     0)

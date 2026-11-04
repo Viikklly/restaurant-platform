@@ -1,4 +1,5 @@
 #!/bin/bash
+# startForBash/lib/loadtest.sh
 # Нагрузочное тестирование (только функции)
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -99,9 +100,14 @@ invoke_k6() {
     # если rw=1, добавляем флаг
     [ "$rw" -eq 1 ] && cmd+=(--out experimental-prometheus-rw)
 
-    # Добавляем переменные окружения
+    # RATE — переменная окружения (читается в k6 через __ENV.RATE)
     [ -n "$rate" ] && cmd+=(-e "RATE=$rate")
-    [ -n "$tag" ]  && cmd+=(-e "TESTID=$tag")
+
+    # TESTID — это TAG метрики (label testid в Prometheus), а НЕ env.
+    # -e TESTID=... добавляет env, но НЕ label к метрикам.
+    # --tag testid=... добавляет label testid="..." ко всем метрикам k6
+    # → в Prometheus можно фильтровать {testid="order-read-..."} → в Grafana работает.
+    [ -n "$tag" ]  && cmd+=(--tag "testid=$tag")
 
     cmd+=("/scripts/$file")
 
@@ -113,10 +119,11 @@ invoke_k6() {
     docker exec -it restaurant-k6 "${cmd[@]}"
 }
 
-# Запуск теста с веб-дашбордом (с поддержкой RATE)
+# Запуск теста с веб-дашбордом (с поддержкой RATE и TESTID)
 invoke_k6_dashboard() {
     local file="${1:-$K6_DEFAULT_TEST}"
     local rate="${2:-}"
+    local tag="${3:-}"
     file="$(_clean_k6_path "$file")"
 
     if ! docker ps --format '{{.Names}}' | grep -q "^restaurant-k6$"; then
@@ -126,10 +133,12 @@ invoke_k6_dashboard() {
 
     local cmd=(k6 run --out web-dashboard)
     [ -n "$rate" ] && cmd+=(-e "RATE=$rate")
+    [ -n "$tag" ]  && cmd+=(--tag "testid=$tag")
     cmd+=("/scripts/$file")
 
     write_step "Запуск k6 с веб-дашбордом: $file"
     [ -n "$rate" ] && write_step "  RATE=$rate"
+    [ -n "$tag" ]  && write_step "  TESTID=$tag"
     write_step "Дашборд будет доступен по адресу: http://localhost:5665"
     write_step "Для выхода нажмите Ctrl+C (это не остановит тест, он завершится сам)"
 

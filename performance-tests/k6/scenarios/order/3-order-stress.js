@@ -1,5 +1,6 @@
 
-// Стресс-тест: ramping arrival-rate до 500 rps
+// Стресс-тест: ramping arrival-rate до 300 rps
+// Yf 500 сильная деградация
 // Цель: найти точку, где order-service начинает деградировать
 //
 // Наблюдай:
@@ -23,7 +24,7 @@ export const options = {
             stages: [
                 { duration: '30s', target: 50  },
                 { duration: '1m',  target: 200 },
-                { duration: '30s', target: 500 },
+                { duration: '30s', target: 300 },
                 { duration: '30s', target: 0   },
             ],
             preAllocatedVUs: 100,

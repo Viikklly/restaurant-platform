@@ -37,6 +37,7 @@ services:
     networks:
       - restaurant-network
     entrypoint: ["tail", "-f", "/dev/null"]
+    cpus: 2
 
 
   # Gatling
