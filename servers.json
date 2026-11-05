@@ -1,0 +1,40 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Auth DB",
+      "Group": "Restaurant",
+      "Host": "postgres-auth",
+      "Port": 5432,
+      "MaintenanceDB": "authdb",
+      "Username": "postgres",
+      "SSLMode": "prefer"
+    },
+    "2": {
+      "Name": "Order DB",
+      "Group": "Restaurant",
+      "Host": "postgres-order",
+      "Port": 5432,
+      "MaintenanceDB": "orderdb",
+      "Username": "postgres",
+      "SSLMode": "prefer"
+    },
+    "3": {
+      "Name": "Kitchen DB",
+      "Group": "Restaurant",
+      "Host": "postgres-kitchen",
+      "Port": 5432,
+      "MaintenanceDB": "kitchendb",
+      "Username": "postgres",
+      "SSLMode": "prefer"
+    },
+    "4": {
+      "Name": "Payment DB",
+      "Group": "Restaurant",
+      "Host": "postgres-payment",
+      "Port": 5432,
+      "MaintenanceDB": "paymentdb",
+      "Username": "postgres",
+      "SSLMode": "prefer"
+    }
+  }
+}

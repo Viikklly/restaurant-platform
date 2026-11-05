@@ -1,5 +1,6 @@
 package com.restaurant.kitchen_service.service;
 
+import com.restaurant.common.events.CookingStartedEvent;
 import com.restaurant.common.events.KitchenOrderReadyEvent;
 import com.restaurant.common.events.OrderPaidEvent;
 import com.restaurant.kitchen_service.entity.Ticket;
@@ -10,9 +11,14 @@ import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.annotation.DltHandler;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.annotation.RetryableTopic;
 import org.springframework.kafka.core.KafkaTemplate;
 
+import org.springframework.kafka.retrytopic.DltStrategy;
+import org.springframework.kafka.retrytopic.TopicSuffixingStrategy;
+import org.springframework.retry.annotation.Backoff;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -49,6 +55,14 @@ public class KitchenService {
      * Получаем оплаченный заказ от Order Service
      * Топик: order-service.order.paid
      */
+    @RetryableTopic(
+            kafkaTemplate = "kafkaTemplate",
+            attempts = "4",
+            backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 10000),
+            autoCreateTopics = "true",
+            topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE,
+            dltStrategy = DltStrategy.FAIL_ON_ERROR
+    )
     @KafkaListener(topics = "order-service.order.paid", groupId = "kitchen-group")
     public void acceptOrder(OrderPaidEvent event) {
 
@@ -84,7 +98,7 @@ public class KitchenService {
             log.info("Заказ #{} добавлен в очередь. Всего в очереди: {}", event.getOrderId(), orderQueue.size());
 
             /// Отправляем событие, что кухня начала готовить (для статуса PREPARING)
-            kafkaTemplate.send("kitchen-service.cooking.started", event.getOrderId());
+            kafkaTemplate.send("kitchen-service.cooking.started", new CookingStartedEvent(event.getOrderId()));
             log.info("Отправлено событие 'kitchen-service.cooking.started' для заказа #{}", event.getOrderId());
 
         } catch (Exception e) {
@@ -141,6 +155,14 @@ public class KitchenService {
     /**
      *  Отмена заказа
      */
+    @RetryableTopic(
+            kafkaTemplate = "kafkaTemplate",
+            attempts = "4",
+            backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 10000),
+            autoCreateTopics = "true",
+            topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE,
+            dltStrategy = DltStrategy.FAIL_ON_ERROR
+    )
     @KafkaListener(topics = "order-service.order.cancelled", groupId = "kitchen-group")
     public void cancelOrder(Long orderId) {
         log.info("КУХНЯ: Получена отмена заказа #{}", orderId);
@@ -376,4 +398,16 @@ public class KitchenService {
         return ticket;
     }
 
+    @DltHandler
+    public void handleDlt(Object event) {
+        if (event instanceof OrderPaidEvent e) {
+            log.error("DLT (order.paid): заказ #{} не обработан после всех retry", e.getOrderId());
+        } else if (event instanceof Number) {
+            log.error("DLT (order.cancelled): отмена заказа #{} не обработана", event);
+        } else {
+            log.error("DLT: неизвестный тип события: {}", event != null ? event.getClass() : "null");
+        }
+        kafkaMetrics.incrementCookingError(); // Используем существующую метрику ошибок
+
+    }
 }

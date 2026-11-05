@@ -1,11 +1,6 @@
 # application-test.yml (для order-service)
 # services/order-service/src/test/resources/application-test.yml
 
-# Spring загружает src/test/resources/application-test.yml.
-# В нём spring.cloud.config.enabled: false → Config Server не подключается.
-# config-repo/application-test.yml не подтягивается.
-# Тест использует Testcontainers PostgreSQL.
-# Liquibase накатывает миграции. ✅
 eureka:
   client:
     enabled: false
@@ -35,9 +30,10 @@ spring:
     enabled: true
     change-log: classpath:db/changelog/db.changelog-master.yaml
 
-
   kafka:
     bootstrap-servers: ""
+    listener:
+      auto-startup: false   # не запускать consumer'ов в тестах (иначе JVM висит 30с)
 
   autoconfigure:
     exclude:

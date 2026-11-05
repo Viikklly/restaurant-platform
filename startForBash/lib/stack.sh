@@ -48,9 +48,10 @@ stack_full() {
     docker-compose -f "$compose" down >/dev/null 2>&1
 
     # ---------- БД и брокеры ----------
-    write_step "Запускаем БД, Redis и Kafka..."
+    write_step "Запускаем БД, Redis, Kafka и UI..."
     docker-compose -f "$compose" up -d \
-        postgres-auth postgres-order postgres-kitchen postgres-payment redis kafka
+      postgres-auth postgres-order postgres-kitchen postgres-payment redis kafka \
+      kafka-ui redis-insight pgadmin
 
     write_step "Ждём готовности инфраструктуры (healthcheck)..."
     local c
@@ -66,6 +67,19 @@ stack_full() {
         write_error "Kafka не стала healthy. Проверь: docker logs restaurant-kafka"
         exit 1
     }
+
+    # UI-сервисы: у них нет healthcheck в docker-compose, поэтому просто проверяем, что контейнеры запустились
+    write_step "Проверяем, что UI-сервисы запустились..."
+    sleep 3
+    for ui in restaurant-kafka-ui restaurant-redis-insight restaurant-pgadmin; do
+        if docker ps --format '{{.Names}}' | grep -qx "$ui"; then
+            write_success "$ui запущен"
+        else
+            write_warning "$ui не запустился (проверь: docker logs $ui)"
+        fi
+    done
+
+
     write_success "Инфраструктура готова"
 
     # ---------- Мониторинг ----------

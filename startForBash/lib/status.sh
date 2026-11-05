@@ -25,6 +25,26 @@ show_status() {
         fi
     done
 
+
+        write_section "ЗДОРОВЬЕ UI-СЕРВИСОВ"
+        local ui_services=(
+            "Kafka UI:8085" "Redis Insight:5540" "PGAdmin:5050"
+        )
+        local ui name port code
+        for ui in "${ui_services[@]}"; do
+            name="${ui%%:*}"; port="${ui##*:}"
+            # Получаем HTTP-код. Если сервер не отвечает, curl вернёт 000.
+            code=$(curl -s -o /dev/null -w "%{http_code}" -m 3 "http://localhost:$port" 2>/dev/null)
+
+            # Если код не 000 и не пустой — значит, сервис ответил (200, 302, 401 и т.д.)
+            if [ -n "$code" ] && [ "$code" != "000" ]; then
+                write_success "$name: UP (HTTP $code)"
+            else
+                write_error "$name: DOWN (не отвечает)"
+            fi
+        done
+
+
     write_section "ЗДОРОВЬЕ МОНИТОРИНГА"
     local monitoring=(
         "Prometheus:9090/-/healthy" "Grafana:3000/api/health"

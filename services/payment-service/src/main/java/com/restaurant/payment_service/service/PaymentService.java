@@ -8,8 +8,13 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.annotation.DltHandler;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.annotation.RetryableTopic;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.retrytopic.DltStrategy;
+import org.springframework.kafka.retrytopic.TopicSuffixingStrategy;
+import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Service;
 import com.restaurant.payment_service.metrics.KafkaMetrics;
 import io.micrometer.core.instrument.Timer;
@@ -41,6 +46,13 @@ public class PaymentService {
     /**
      * Операция оплаты заказа
      */
+    @RetryableTopic(
+            attempts = "4",
+            backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 10000),
+            autoCreateTopics = "true",
+            topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE,
+            dltStrategy = DltStrategy.FAIL_ON_ERROR
+    )
     @KafkaListener(topics = "order-service.order.created", groupId = "payment-group")
     public void processPayment(OrderCreatedEvent event) {
         log.info("PaymentService получил событие для заказа #{}", event.getOrderId());
@@ -272,5 +284,17 @@ public class PaymentService {
         redisService.delete("payments:order:" + orderId);
         log.debug("Invalidated user#{}, order#{} caches (payments:all relies on TTL)",
                 userId, orderId);
+    }
+
+
+    @DltHandler
+    public void handleDlt(Object event) {
+        if (event instanceof OrderCreatedEvent e) {
+            log.error(" DLT (order.created): заказ #{} не обработан после всех retry. userId={}, totalAmount={}",
+                    e.getOrderId(), e.getUserId(), e.getTotalAmount());
+        } else {
+            log.error(" DLT: неизвестный тип события: {}", event != null ? event.getClass() : "null");
+        }
+        kafkaMetrics.incrementPaymentFailed(); // Метрика ошибки
     }
 }

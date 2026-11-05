@@ -1,5 +1,6 @@
 package com.restaurant.kitchen_service.service;
 
+import com.restaurant.common.events.CookingStartedEvent;
 import com.restaurant.common.events.KitchenOrderReadyEvent;
 import com.restaurant.common.events.OrderPaidEvent;
 import com.restaurant.kitchen_service.entity.Ticket;
@@ -149,7 +150,8 @@ class KitchenServiceIntegrationTest {
         /// Kafka отправлено событие начала готовки
         verify(kafkaTemplate, times(1)).send(
                 eq("kitchen-service.cooking.started"),
-                eq(1L)
+                argThat(e -> e instanceof CookingStartedEvent
+                        && ((CookingStartedEvent) e).getOrderId().equals(1L))
         );
 
         /// метрики вызваны

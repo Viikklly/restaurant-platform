@@ -1,7 +1,9 @@
 package com.restaurant.order_service.service;
 
+import com.restaurant.common.events.CookingStartedEvent;
 import com.restaurant.common.events.KitchenOrderReadyEvent;
 import com.restaurant.common.events.OrderCreatedEvent;
+import com.restaurant.common.events.OrderDeliveredEvent;
 import com.restaurant.common.events.OrderPaidEvent;
 import com.restaurant.common.events.PaymentProcessedEvent;
 import com.restaurant.order_service.dto.OrderCreateRequestDTO;
@@ -18,17 +20,20 @@ import com.restaurant.order_service.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.kafka.annotation.DltHandler;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.annotation.RetryableTopic;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.retrytopic.DltStrategy;
+import org.springframework.kafka.retrytopic.TopicSuffixingStrategy;
+import org.springframework.retry.annotation.Backoff;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.micrometer.core.instrument.Timer;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -48,6 +53,7 @@ public class OrderService {
     @Autowired
     private final KafkaMetrics kafkaMetrics; /// Метрики
 
+    private final OrderStatusUpdater orderStatusUpdater;   ///
 
 
     private static final String TOPIC_ORDER_CREATED = "order-service.order.created";
@@ -90,8 +96,8 @@ public class OrderService {
         OrderResponseDTO response = buildResponseDTO(savedOrder, kitchenItems);
 
         /// Метрики
-        kafkaMetrics.incrementProduced();        /// Отправленное сообщение в Kafka +1
-        kafkaMetrics.incrementOrderCreated();    /// Заказ создан +1
+        kafkaMetrics.incrementProduced();
+        kafkaMetrics.incrementOrderCreated();
 
         /// Отправляем событие в Kafka
         sendOrderCreatedEvent(savedOrder, kitchenItems);
@@ -303,229 +309,183 @@ public class OrderService {
 
         kafkaTemplate.send(TOPIC_ORDER_PAID, event);
 
-        /// Метрики отправленный заказ +1
         kafkaMetrics.incrementProduced();
 
         log.info(" Событие OrderPaid отправлено в топик '{}'", TOPIC_ORDER_PAID);
     }
 
-    ///  KAFKA CONSUMERS
 
-    /**
-     * ОБРАБОТКА УСПЕШНОЙ ОПЛАТЫ
-     * Статус: PENDING → PAID
-     * @CacheEvict - автоматически удаляет кэш при изменении данных
-     */
+
+    @RetryableTopic(   // @RetryableTopic — non-blocking retry + DLT
+            attempts = "4",
+            backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 10000),
+            autoCreateTopics = "true",
+            topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE,
+            dltStrategy = DltStrategy.FAIL_ON_ERROR
+    )
     @KafkaListener(topics = TOPIC_PAYMENT_SUCCESS, groupId = "order-group")
-    @Transactional
-    @CacheEvict(value = {"orders", "orderItems"}, key = "#event.orderId")
+    @Transactional   // 🔧 для lazy: sendOrderPaidEvent трогает order.getItems()
     public void handlePaymentSuccess(PaymentProcessedEvent event) {
 
-        /// Метрики запускаем таймер
         Timer.Sample timer = kafkaMetrics.startProcessingTimer();
-
 
         try {
             log.info(" Получен SUCCESS для заказа #{}", event.getOrderId());
+            kafkaMetrics.incrementConsumed();
 
-            /// Метрики
-            kafkaMetrics.incrementConsumed();     /// Метрики Полученное сообщение +1
-            kafkaMetrics.incrementOrderPaid();    /// Метрики Заказ оплачен +1
-
-            Order order = getOrderEntity(event.getOrderId());
-            order.setStatus(OrderStatus.PAID.name());
-            orderRepository.save(order);
+            /// через updater (транзакция + evict кэша внутри)
+            Order order = orderStatusUpdater.updateStatusAndReturn(
+                    event.getOrderId(), OrderStatus.PAID);
+            kafkaMetrics.incrementOrderPaid();
 
             /// Отправляем событие на кухню
             sendOrderPaidEvent(order);
 
             log.info("Заказ #{}: статус изменён на {}", order.getId(), order.getStatus());
 
-        } catch (OrderNotFoundException e) {
-            log.error("Заказ #{} не найден при обработке оплаты", event.getOrderId());
-
-            /// Метрики ошибка +1
-            kafkaMetrics.incrementProcessingError();
         } catch (Exception e) {
-            log.error("Ошибка обработки оплаты заказа #{}", event.getOrderId(), e);
-
-            /// Метрики ошибка +1
             kafkaMetrics.incrementProcessingError();
+            log.error("Ошибка обработки оплаты заказа #{}", event.getOrderId(), e);
+            throw e;
         } finally {
-            /// Метрики, останавливаем таймер
             kafkaMetrics.stopProcessingTimer(timer);
         }
     }
 
-    /**
-     * ОБРАБОТКА НЕУСПЕШНОЙ ОПЛАТЫ
-     * Статус: PENDING → CANCELLED
-     * @CacheEvict - автоматически удаляет кэш
-     */
+    @RetryableTopic(
+            attempts = "4",
+            backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 10000),
+            autoCreateTopics = "true",
+            topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE,
+            dltStrategy = DltStrategy.FAIL_ON_ERROR
+    )
     @KafkaListener(topics = TOPIC_PAYMENT_FAILED, groupId = "order-group")
-    @Transactional
-    @CacheEvict(value = {"orders", "orderItems"}, key = "#event.orderId")
     public void handlePaymentFailed(PaymentProcessedEvent event) {
-
-        /// Метрики, включаем таймер
 
         Timer.Sample timer = kafkaMetrics.startProcessingTimer();
 
         try {
             log.info(" Получен FAILED для заказа #{}: {}", event.getOrderId(), event.getMessage());
+            kafkaMetrics.incrementConsumed();
 
+            /// через updater (транзакция + evict кэша внутри)
+            orderStatusUpdater.updateStatusAndEvict(event.getOrderId(), OrderStatus.CANCELLED);
+            kafkaMetrics.incrementOrderCancelled();
 
-            /// Метрики
-            kafkaMetrics.incrementConsumed();                /// Метрики Полученное сообщение +1
-            kafkaMetrics.incrementOrderCancelled();          /// Метрики Заказ отменен +1
-
-            Order order = getOrderEntity(event.getOrderId());
-            order.setStatus(OrderStatus.CANCELLED.name());
-            orderRepository.save(order);
-
-            log.info(" Заказ #{}: статус изменён на {}", order.getId(), order.getStatus());
-
-        } catch (OrderNotFoundException e) {
-            log.error(" Заказ #{} не найден при обработке отмены", event.getOrderId());
-
-            /// Метрики ошибка +1
-            kafkaMetrics.incrementProcessingError();
         } catch (Exception e) {
-            log.error(" Ошибка обработки отмены заказа #{}", event.getOrderId(), e);
-
-            /// Метрики ошибка +1
             kafkaMetrics.incrementProcessingError();
+            log.error(" Ошибка обработки отмены заказа #{}", event.getOrderId(), e);
+            throw e;
         } finally {
-            /// Метрики выключам таймер
             kafkaMetrics.stopProcessingTimer(timer);
         }
     }
 
-    /**
-     * КУХНЯ НАЧАЛА ГОТОВКУ
-     * Статус: PAID → PREPARING
-     */
+    @RetryableTopic(
+            attempts = "4",
+            backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 10000),
+            autoCreateTopics = "true",
+            topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE,
+            dltStrategy = DltStrategy.FAIL_ON_ERROR
+    )
     @KafkaListener(topics = TOPIC_COOKING_STARTED, groupId = "order-group")
-    @Transactional
-    @CacheEvict(value = {"orders", "orderItems"}, key = "#orderId")
-    public void handleCookingStarted(Long orderId) {
+    public void handleCookingStarted(CookingStartedEvent event) {   //  CookingStartedEvent / OrderDeliveredEvent вместо Long
 
-        /// Метрики включаем таймер
         Timer.Sample timer = kafkaMetrics.startProcessingTimer();
 
         try {
-            log.info("Кухня начала готовить заказ #{}", orderId);
+            log.info("Кухня начала готовить заказ #{}", event.getOrderId());
+            kafkaMetrics.incrementConsumed();
 
+            /// через updater (транзакция + evict кэша внутри)
+            orderStatusUpdater.updateStatusAndEvict(event.getOrderId(), OrderStatus.PREPARING);
 
-            /// Метрики
-            kafkaMetrics.incrementConsumed();   /// Метрики Полученное сообщение +1
-
-            Order order = getOrderEntity(orderId);
-            order.setStatus(OrderStatus.PREPARING.name());
-            orderRepository.save(order);
-
-            log.info("Заказ #{}: статус изменён на {}", order.getId(), order.getStatus());
-
-        } catch (OrderNotFoundException e) {
-            log.error("Заказ #{} не найден при начале готовки", orderId);
-
-            /// Метрики ошибка +1
-            kafkaMetrics.incrementProcessingError();
         } catch (Exception e) {
-            log.error("Ошибка обработки начала готовки заказа #{}", orderId, e);
-
-            /// Метрики ошибка +1
             kafkaMetrics.incrementProcessingError();
+            log.error("Ошибка обработки начала готовки заказа #{}", event.getOrderId(), e);
+            throw e;
         } finally {
-            /// Метрики таймер остановлен
             kafkaMetrics.stopProcessingTimer(timer);
         }
     }
 
-    /**
-     * ЗАКАЗ ГОТОВ
-     * Статус: PREPARING → READY
-     */
+    @RetryableTopic(
+            attempts = "4",
+            backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 10000),
+            autoCreateTopics = "true",
+            topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE,
+            dltStrategy = DltStrategy.FAIL_ON_ERROR
+    )
     @KafkaListener(topics = TOPIC_ORDER_READY, groupId = "order-group")
-    @Transactional
-    @CacheEvict(value = {"orders", "orderItems"}, key = "#event.orderId")
     public void handleOrderReady(KitchenOrderReadyEvent event) {
 
-        /// Метрики запускаем таймер
         Timer.Sample timer = kafkaMetrics.startProcessingTimer();
 
-
         try {
+            log.info("Заказ #{} готов к выдаче!", event.getOrderId());
+            kafkaMetrics.incrementConsumed();
 
-           log.info("Заказ #{} готов к выдаче!", event.getOrderId());
+            /// через updater (транзакция + evict кэша внутри)
+            orderStatusUpdater.updateStatusAndEvict(event.getOrderId(), OrderStatus.READY);
+            kafkaMetrics.incrementOrderReady();
 
-           /// Метрики
-            kafkaMetrics.incrementConsumed();           /// Метрики Полученное сообщение +1
-            kafkaMetrics.incrementOrderReady();         /// Метрики Заказ готов +1
-
-
-            Order order = getOrderEntity(event.getOrderId());
-            order.setStatus(OrderStatus.READY.name());
-            order.setUpdatedAt(LocalDateTime.now());
-
-            orderRepository.save(order);
-
-            log.info("Заказ #{}: статус изменён на {}", order.getId(), order.getStatus());
-
-        } catch (OrderNotFoundException e) {
-            log.error("Заказ #{} не найден при получении статуса READY", event.getOrderId());
-
-            /// Метрики ошибка +1
-            kafkaMetrics.incrementProcessingError();
         } catch (Exception e) {
-            log.error("Ошибка обработки готовности заказа #{}", event.getOrderId(), e);
-
-            /// Метрики ошибка +1
             kafkaMetrics.incrementProcessingError();
+            log.error("Ошибка обработки готовности заказа #{}", event.getOrderId(), e);
+            throw e;
         } finally {
-            /// Метрики остановливаем таймер
             kafkaMetrics.stopProcessingTimer(timer);
         }
     }
 
-    /**
-     * ЗАКАЗ ДОСТАВЛЕН
-     * Статус: READY → DELIVERED
-     */
+    @RetryableTopic(
+            attempts = "4",
+            backoff = @Backoff(delay = 2000, multiplier = 2.0, maxDelay = 10000),
+            autoCreateTopics = "true",
+            topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE,
+            dltStrategy = DltStrategy.FAIL_ON_ERROR
+    )
     @KafkaListener(topics = TOPIC_ORDER_DELIVERED, groupId = "order-group")
-    @Transactional
-    @CacheEvict(value = {"orders", "orderItems"}, key = "#orderId")
-    public void handleOrderDelivered(Long orderId) {
+    public void handleOrderDelivered(OrderDeliveredEvent event) {   //  CookingStartedEvent / OrderDeliveredEvent вместо Long
 
-        /// Метрики запускаем таймер
         Timer.Sample timer = kafkaMetrics.startProcessingTimer();
 
         try {
-            log.info("Заказ #{} доставлен клиенту!", orderId);
+            log.info("Заказ #{} доставлен клиенту!", event.getOrderId());
+            kafkaMetrics.incrementConsumed();
 
-            /// Метрики
-            kafkaMetrics.incrementConsumed();  ///  Метрики Полученное сообщение
+            /// через updater (транзакция + evict кэша внутри)
+            orderStatusUpdater.updateStatusAndEvict(event.getOrderId(), OrderStatus.DELIVERED);
 
-            Order order = getOrderEntity(orderId);
-            order.setStatus(OrderStatus.DELIVERED.name());
-            order.setUpdatedAt(LocalDateTime.now());
-            orderRepository.save(order);
-
-            log.info("Заказ #{}: статус изменён на {}", order.getId(), order.getStatus());
-
-        } catch (OrderNotFoundException e) {
-            log.error("Заказ #{} не найден при доставке", orderId);
-
-            /// Метрики ошибка +1
-            kafkaMetrics.incrementProcessingError();
         } catch (Exception e) {
-            log.error("Ошибка обработки доставки заказа #{}", orderId, e);
-
-            /// Метрики ошибка +1
             kafkaMetrics.incrementProcessingError();
-        }finally {
-            /// Метрики Остановливаем таймер
+            log.error("Ошибка обработки доставки заказа #{}", event.getOrderId(), e);
+            throw e;
+        } finally {
             kafkaMetrics.stopProcessingTimer(timer);
         }
+    }
+
+
+
+    //  DLT HANDLER метод, который «ловит» сообщения, с
+    //  которыми не удалось справиться основному обработчику после всех повторных попыток.
+    @DltHandler
+    public void handleDlt(Object event) {
+        if (event instanceof PaymentProcessedEvent e) {
+            log.error(" DLT (payment): заказ #{} не обработан после всех retry. status={}",
+                    e.getOrderId(), e.getStatus());
+        } else if (event instanceof CookingStartedEvent e) {
+            log.error(" DLT (cooking.started): заказ #{} не обработан после всех retry", e.getOrderId());
+        } else if (event instanceof KitchenOrderReadyEvent e) {
+            log.error(" DLT (order.ready): заказ #{} не обработан после всех retry. ticketId={}",
+                    e.getOrderId(), e.getTicketId());
+        } else if (event instanceof OrderDeliveredEvent e) {
+            log.error(" DLT (order.delivered): заказ #{} не обработан после всех retry", e.getOrderId());
+        } else {
+            log.error(" DLT: неизвестный тип события: {}", event != null ? event.getClass() : "null");
+        }
+        kafkaMetrics.incrementProcessingError();
+
     }
 }

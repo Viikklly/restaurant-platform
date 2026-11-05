@@ -1,5 +1,6 @@
 package com.restaurant.kitchen_service.service;
 
+import com.restaurant.common.events.CookingStartedEvent;
 import com.restaurant.common.events.KitchenOrderReadyEvent;
 import com.restaurant.common.events.OrderPaidEvent;
 import com.restaurant.kitchen_service.entity.Ticket;
@@ -119,7 +120,11 @@ class KitchenServiceUnitTest {
             assertThat(saved.getStatus()).isEqualTo(TicketStatusEnum.OPEN);
 
             verify(redisService).cacheTicket(eq(TEST_ORDER_ID), any(Ticket.class));
-            verify(kafkaTemplate).send(eq("kitchen-service.cooking.started"), eq(TEST_ORDER_ID));
+            verify(kafkaTemplate).send(
+                    eq("kitchen-service.cooking.started"),
+                    argThat(e -> e instanceof CookingStartedEvent
+                            && ((CookingStartedEvent) e).getOrderId().equals(TEST_ORDER_ID))
+            );
             verify(kafkaMetrics).incrementConsumed();
             verify(kafkaMetrics).incrementOrderReceived();
         }

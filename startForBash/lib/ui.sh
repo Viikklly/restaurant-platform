@@ -18,8 +18,9 @@ show_urls() {
     echo "    Zookeeper:          localhost:2181"
 
     echo -e "\n  ${CYAN}UI/ВИЗУАЛИЗАЦИЯ:${NC}"
-    echo "    PGAdmin:     http://localhost:5050 (admin@restaurant.com/admin)"
-    echo "    Kafka UI:    http://localhost:8085"
+    echo "    PGAdmin:          http://localhost:5050 (admin@restaurant.com/admin)"
+    echo "    Kafka UI:         http://localhost:8085"
+    echo "    Redis Insight:    http://localhost:5540"
 
     echo -e "\n  ${CYAN}МОНИТОРИНГ:${NC}"
     echo "    Prometheus:   http://localhost:9090"

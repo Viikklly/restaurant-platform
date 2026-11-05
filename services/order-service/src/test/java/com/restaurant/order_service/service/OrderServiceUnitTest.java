@@ -1,9 +1,6 @@
 package com.restaurant.order_service.service;
 
-import com.restaurant.common.events.KitchenOrderReadyEvent;
-import com.restaurant.common.events.OrderCreatedEvent;
-import com.restaurant.common.events.OrderPaidEvent;
-import com.restaurant.common.events.PaymentProcessedEvent;
+import com.restaurant.common.events.*;
 import com.restaurant.order_service.dto.OrderCreateRequestDTO;
 import com.restaurant.order_service.dto.OrderResponseDTO;
 import com.restaurant.order_service.entity.Item;
@@ -61,6 +58,10 @@ class OrderServiceUnitTest {
     @Mock
     private Timer.Sample timerSample;
 
+    @Mock
+    private OrderStatusUpdater orderStatusUpdater;
+
+
     @InjectMocks
     private OrderService orderService;
 
@@ -81,6 +82,24 @@ class OrderServiceUnitTest {
         lenient().doNothing().when(kafkaMetrics).incrementOrderCancelled();
         lenient().doNothing().when(kafkaMetrics).incrementOrderReady();
         lenient().doNothing().when(kafkaMetrics).incrementProcessingError();
+
+        // 🔧 ШАГ 4: мокаем updateStatusAndReturn — возвращает order с новым статусом
+        lenient().when(orderStatusUpdater.updateStatusAndReturn(anyLong(), any(OrderStatus.class)))
+                .thenAnswer(inv -> {
+                    Long orderId = inv.getArgument(0);
+                    OrderStatus status = inv.getArgument(1);
+                    Order order = createTestOrder(orderId, TEST_USER_ID, status.name(), TEST_TOTAL_AMOUNT);
+                    return order;
+                });
+
+        // 🔧 ШАГ 4: мокаем updateStatusAndEvict — обновляет order в БД (эмуляция)
+        lenient().doAnswer(inv -> {
+            Long orderId = inv.getArgument(0);
+            OrderStatus status = inv.getArgument(1);
+            // Найти order в моках и обновить статус (для assert'ов)
+            // Проще — в тестах проверять через ArgumentCaptor
+            return null;
+        }).when(orderStatusUpdater).updateStatusAndEvict(anyLong(), any(OrderStatus.class));
     }
 
 
@@ -489,117 +508,69 @@ class OrderServiceUnitTest {
     class KafkaConsumerTests {
 
         @Test
-        @DisplayName("handlePaymentSuccess() - меняет статус на PAID")
-        void handlePaymentSuccess_ShouldChangeStatusToPaid() {
+        @DisplayName("handlePaymentSuccess() - вызывает updater с PAID")
+        void handlePaymentSuccess_ShouldCallUpdaterWithPaid() {
 
-            Order order = createTestOrder(TEST_ORDER_ID, TEST_USER_ID, OrderStatus.PENDING.name(), TEST_TOTAL_AMOUNT);
             PaymentProcessedEvent event = new PaymentProcessedEvent(TEST_ORDER_ID, "SUCCESS", "OK");
 
-            when(orderRepository.findById(TEST_ORDER_ID)).thenReturn(Optional.of(order));
-            when(orderRepository.save(any(Order.class))).thenReturn(order);
-            when(orderItemRepository.findByOrderId(TEST_ORDER_ID)).thenReturn(List.of());
-            when(kafkaTemplate.send(anyString(), any())).thenReturn(null);
-
+            /// мок updateStatusAndReturn уже настроен в setUp — возвращает order с PAID
 
             orderService.handlePaymentSuccess(event);
 
             /// Проверки
-            assertThat(order.getStatus()).isEqualTo(OrderStatus.PAID.name());
-            verify(orderRepository).save(order);
+            verify(orderStatusUpdater).updateStatusAndReturn(TEST_ORDER_ID, OrderStatus.PAID);
             verify(kafkaMetrics).incrementConsumed();
             verify(kafkaMetrics).incrementOrderPaid();
             verify(kafkaTemplate).send(eq("order-service.order.paid"), any(OrderPaidEvent.class));
         }
 
         @Test
-        @DisplayName("handlePaymentFailed() - меняет статус на CANCELLED")
-        void handlePaymentFailed_ShouldChangeStatusToCancelled() {
+        @DisplayName("handlePaymentFailed() - вызывает updater с CANCELLED")
+        void handlePaymentFailed_ShouldCallUpdaterWithCancelled() {
 
-            Order order = createTestOrder(TEST_ORDER_ID, TEST_USER_ID, OrderStatus.PENDING.name(), TEST_TOTAL_AMOUNT);
-            PaymentProcessedEvent event = new PaymentProcessedEvent(TEST_ORDER_ID, "FAILED", "Ошибка оплаты");
-
-            when(orderRepository.findById(TEST_ORDER_ID)).thenReturn(Optional.of(order));
-
+            PaymentProcessedEvent event = new PaymentProcessedEvent(TEST_ORDER_ID, "FAILED", "Error");
 
             orderService.handlePaymentFailed(event);
 
-            /// Проверки
-            assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED.name());
-            verify(orderRepository).save(order);
+            verify(orderStatusUpdater).updateStatusAndEvict(TEST_ORDER_ID, OrderStatus.CANCELLED);
             verify(kafkaMetrics).incrementConsumed();
             verify(kafkaMetrics).incrementOrderCancelled();
         }
 
+
         @Test
-        @DisplayName("handleCookingStarted() - меняет статус на PREPARING")
-        void handleCookingStarted_ShouldChangeStatusToPreparing() {
+        @DisplayName("handleCookingStarted() - вызывает updater с PREPARING")
+        void handleCookingStarted_ShouldCallUpdaterWithPreparing() {
 
-            Order order = createTestOrder(TEST_ORDER_ID, TEST_USER_ID, OrderStatus.PAID.name(), TEST_TOTAL_AMOUNT);
+            orderService.handleCookingStarted(new CookingStartedEvent(TEST_ORDER_ID));
 
-            when(orderRepository.findById(TEST_ORDER_ID)).thenReturn(Optional.of(order));
-
-
-            orderService.handleCookingStarted(TEST_ORDER_ID);
-
-            /// Проверки
-            assertThat(order.getStatus()).isEqualTo(OrderStatus.PREPARING.name());
-            verify(orderRepository).save(order);
+            verify(orderStatusUpdater).updateStatusAndEvict(TEST_ORDER_ID, OrderStatus.PREPARING);
             verify(kafkaMetrics).incrementConsumed();
         }
 
         @Test
-        @DisplayName("handleOrderReady() - меняет статус на READY")
-        void handleOrderReady_ShouldChangeStatusToReady() {
+        @DisplayName("handleOrderReady() - вызывает updater с READY")
+        void handleOrderReady_ShouldCallUpdaterWithReady() {
 
-            Order order = createTestOrder(TEST_ORDER_ID, TEST_USER_ID, OrderStatus.PREPARING.name(), TEST_TOTAL_AMOUNT);
             KitchenOrderReadyEvent event = new KitchenOrderReadyEvent(TEST_ORDER_ID, "ticket-123", "READY");
-
-            when(orderRepository.findById(TEST_ORDER_ID)).thenReturn(Optional.of(order));
-
 
             orderService.handleOrderReady(event);
 
-            /// Проверки
-            assertThat(order.getStatus()).isEqualTo(OrderStatus.READY.name());
-            verify(orderRepository).save(order);
+            verify(orderStatusUpdater).updateStatusAndEvict(TEST_ORDER_ID, OrderStatus.READY);
             verify(kafkaMetrics).incrementConsumed();
             verify(kafkaMetrics).incrementOrderReady();
         }
 
         @Test
-        @DisplayName("handleOrderDelivered() - меняет статус на DELIVERED")
-        void handleOrderDelivered_ShouldChangeStatusToDelivered() {
+        @DisplayName("handleOrderDelivered() - вызывает updater с DELIVERED")
+        void handleOrderDelivered_ShouldCallUpdaterWithDelivered() {
 
-            Order order = createTestOrder(TEST_ORDER_ID, TEST_USER_ID, OrderStatus.READY.name(), TEST_TOTAL_AMOUNT);
+            orderService.handleOrderDelivered(new OrderDeliveredEvent(TEST_ORDER_ID));
 
-            when(orderRepository.findById(TEST_ORDER_ID)).thenReturn(Optional.of(order));
-
-
-            orderService.handleOrderDelivered(TEST_ORDER_ID);
-
-            /// Проверки
-            assertThat(order.getStatus()).isEqualTo(OrderStatus.DELIVERED.name());
-            verify(orderRepository).save(order);
+            verify(orderStatusUpdater).updateStatusAndEvict(TEST_ORDER_ID, OrderStatus.DELIVERED);
             verify(kafkaMetrics).incrementConsumed();
         }
 
-        @Test
-        @DisplayName("Все обработчики логируют ошибку при отсутствии заказа")
-        void allHandlers_ShouldLogError_WhenOrderNotFound() {
-
-            Long nonExistentId = 999L;
-            when(orderRepository.findById(nonExistentId)).thenReturn(Optional.empty());
-
-
-            orderService.handleCookingStarted(nonExistentId);
-            orderService.handleOrderReady(new KitchenOrderReadyEvent(nonExistentId, "ticket", "READY"));
-            orderService.handleOrderDelivered(nonExistentId);
-            orderService.handlePaymentFailed(new PaymentProcessedEvent(nonExistentId, "FAILED", "Error"));
-
-            /// Проверки
-            verify(kafkaMetrics, times(4)).incrementProcessingError();
-            verify(orderRepository, never()).save(any(Order.class));
-        }
     }
 
     //  КЭШИРОВАНИЕ

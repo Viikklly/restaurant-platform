@@ -1,8 +1,6 @@
 package com.restaurant.order_service.service;
 
-import com.restaurant.common.events.KitchenOrderReadyEvent;
-import com.restaurant.common.events.OrderCreatedEvent;
-import com.restaurant.common.events.PaymentProcessedEvent;
+import com.restaurant.common.events.*;
 import com.restaurant.order_service.dto.OrderCreateRequestDTO;
 import com.restaurant.order_service.dto.OrderResponseDTO;
 import com.restaurant.order_service.entity.Item;
@@ -221,7 +219,7 @@ class OrderServiceIntegrationTest {
         orderService.handlePaymentSuccess(new PaymentProcessedEvent(orderId, "SUCCESS", "OK"));
 
         /// приходит событие о начале готовки
-        orderService.handleCookingStarted(orderId);
+        orderService.handleCookingStarted(new CookingStartedEvent(orderId));
 
         /// статус изменился на PREPARING
         Order updatedOrder = orderRepository.findById(orderId).orElseThrow();
@@ -244,7 +242,7 @@ class OrderServiceIntegrationTest {
         Long orderId = created.getId();
 
         orderService.handlePaymentSuccess(new PaymentProcessedEvent(orderId, "SUCCESS", "OK"));
-        orderService.handleCookingStarted(orderId);
+        orderService.handleCookingStarted(new CookingStartedEvent(orderId));
 
         /// приходит событие о готовности заказа
         KitchenOrderReadyEvent event = new KitchenOrderReadyEvent(orderId, "ticket-123", "READY");
@@ -307,7 +305,7 @@ class OrderServiceIntegrationTest {
                 .isEqualTo(OrderStatus.PAID.name());
 
         /// PAID → PREPARING
-        orderService.handleCookingStarted(orderId);
+        orderService.handleCookingStarted(new CookingStartedEvent(orderId));
         assertThat(orderRepository.findById(orderId).get().getStatus())
                 .isEqualTo(OrderStatus.PREPARING.name());
 
@@ -317,7 +315,7 @@ class OrderServiceIntegrationTest {
                 .isEqualTo(OrderStatus.READY.name());
 
         /// READY → DELIVERED
-        orderService.handleOrderDelivered(orderId);
+        orderService.handleOrderDelivered(new OrderDeliveredEvent(orderId));
         assertThat(orderRepository.findById(orderId).get().getStatus())
                 .isEqualTo(OrderStatus.DELIVERED.name());
 

@@ -212,13 +212,36 @@ services:
       # Адрес Kafka внутри Docker сети
       # kafka - имя сервиса в docker-compose
       # 29092 - internal порт (для общения внутри Docker)
-
-
     networks:
       - restaurant-network
     depends_on:
       - kafka
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:8080" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
+
+  redis-insight:
+    image: redis/redisinsight:latest
+    container_name: restaurant-redis-insight
+    ports:
+      - "5540:5540"
+    environment:
+      RI_REDIS_HOST: redis
+      RI_REDIS_PORT: 6379
+    networks:
+      - restaurant-network
+    depends_on:
+      - redis
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:5540" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
 
   # PGADMIN (для просмотра БД)
@@ -239,12 +262,20 @@ services:
     # Открываешь в браузере: http://localhost:5050
     networks:
       - restaurant-network
+    volumes:
+      - ./servers.json:/pgadmin4/servers.json:ro
     depends_on:
       - postgres-auth
       - postgres-order
       - postgres-kitchen
       - postgres-payment
       # Ждёт, пока все БД запустятся
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:80/misc/ping" ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   # ------------ // ------------
   # МИКРОСЕРВИСЫ
